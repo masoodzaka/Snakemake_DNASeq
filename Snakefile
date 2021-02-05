@@ -1,10 +1,24 @@
 rule fastqc:
+	input:
+		"data/samples/S70_L001_R1_001.fastq.gz",
+		"data/samples/S70_L001_R2_001.fastq.gz"
+	output:
+		"FastQC/S70_L001_R1_001_fastqc.html",
+		"FastQC/S70_L001_R1_001_fastqc.zip",
+		"FastQC/S70_L001_R2_001_fastqc.html",
+		"FastQC/S70_L001_R2_001_fastqc.zip"
 	shell:"""
-			fastqc -t 4 data/samples/S70_L001_R1_001.fastq.gz data/samples/S70_L001_R2_001.fastq.gz -o FastQC --noextract -q
+			fastqc -t 4 --noextract -q data/samples/S70_L001_R1_001.fastq.gz data/samples/S70_L001_R2_001.fastq.gz -o FastQC
 		"""
 rule multiqc:
+	input:
+		"FastQC/S70_L001_R1_001_fastqc.html",
+		"FastQC/S70_L001_R2_001_fastqc.html"
+	output:
+		"multiqc_report.html",
+		directory("multiqc_data")
 	shell:"""
-			multiqc -f -o FastQC FastQC
+			multiqc -f -q FastQC
 		"""
 rule bwa_mem:
 	params:
@@ -45,6 +59,8 @@ rule baserecal:
 			--output BQSR_sample_lvl/output.Recal_data.grp
 	"""
 rule applybqsr:
+	output:
+			"output.recalibrated.bam"
 	shell:"""
 			gatk --java-options "-Xmx18G" ApplyBQSR \
 			-L intervals.interval_list \
