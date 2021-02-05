@@ -21,10 +21,16 @@ rule multiqc:
 			multiqc -f -q FastQC
 		"""
 rule bwa_mem:
+	input:
+		"/home/GATK_Bundle/b37/human_g1k_v37_decoy.fasta",
+		"data/samples/S70_L001_R1_001.fastq.gz",
+		"data/samples/S70_L001_R2_001.fastq.gz"
+	output:
+		"BWA_MEM/output.sam"
 	params:
 		rg=r"@RG\tID:RG_01\tLB:Lib_01\tSM:Sample_01\tPL:ILLUMINA"
 	shell:"""
-			bwa mem -t 5 -M -v 1 -R '{params.rg}' /home/GATK_Bundle/b37/human_g1k_v37_decoy.fasta data/samples/S70_L001_R1_001.fastq.gz data/samples/S70_L001_R2_001.fastq.gz > BWA_MEM/output.sam
+			bwa mem -t 5 -M -v 1 -R '{params.rg}' {input} > {output}
 		"""
 rule samtosortedbam:
 	shell:"""
