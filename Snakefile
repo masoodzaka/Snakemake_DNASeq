@@ -1,3 +1,8 @@
+__author__ = "Masood Zaka (https://github.com/masoodzaka/Snakemake_DNASeq.git)"
+__licence__ = "MIT"
+
+configfile: "config.yaml"
+
 rule fastqc:
 	input:
 		"data/samples/S70_L001_R1_001.fastq.gz",
@@ -22,15 +27,18 @@ rule multiqc:
 		"""
 rule bwa_mem:
 	input:
-		"/home/GATK_Bundle/b37/human_g1k_v37_decoy.fasta",
-		"data/samples/S70_L001_R1_001.fastq.gz",
-		"data/samples/S70_L001_R2_001.fastq.gz"
+		REF=config["REF"],
+		R1="data/samples/S70_L001_R1_001.fastq.gz",
+		R2="data/samples/S70_L001_R2_001.fastq.gz"
 	output:
 		"BWA_MEM/output.sam"
 	params:
 		rg=r"@RG\tID:RG_01\tLB:Lib_01\tSM:Sample_01\tPL:ILLUMINA"
+	log:
+		"BWA_MEM/output.log"
+	threads: 4
 	shell:"""
-			bwa mem -t 5 -M -v 1 -R '{params.rg}' {input} > {output}
+			bwa mem -t {threads} -M -v 1 -R '{params.rg}' {input.REF} {input.R1} {input.R2} > {output} 2> {log}
 		"""
 rule samtosortedbam:
 	input:
@@ -80,7 +88,7 @@ rule applybqsr:
 	input:
 		"MarkDuplicates/output.dedup.bam"
 	output:
-		"BQSR_sample_level/output.recalibrated.bam"
+		"BQSR_sample_lvl/output.recalibrated.bam"
 	shell:"""
 			gatk --java-options "-Xmx18G" ApplyBQSR \
 			-L intervals.interval_list \
