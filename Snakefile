@@ -1,7 +1,7 @@
 __author__ = "Masood Zaka (https://github.com/masoodzaka/Snakemake_DNASeq.git)"
 __licence__ = "MIT"
 
-#shell.prefix("set -o pipefail; ")
+shell.prefix("set -o pipefail; ")
 
 
 configfile: "config.yaml"
@@ -12,7 +12,10 @@ SAMPLES, LANES = glob_wildcards("FASTQ/{sample}_{lane}_R1_001.fastq.gz")
 rule all:
 	input:
 		"FastQC/multiqc_report.html",
-		expand("SamToSortedBam/{sample}_{lane}.bam",zip, sample=SAMPLES, lane=LANES)
+		expand("SamToSortedBam/{sample}_{lane}.bam",zip, sample=SAMPLES, lane=LANES),
+		expand("MergeBAMList/{sample}.bam", sample=SAMPLES),
+		expand("MarkDuplicates/{sample}.dedup.bam", sample=SAMPLES),
+		expand("BQSR_sample_lvl/{sample}.recalibrated.bam", sample=SAMPLES)
 
 rule fastqc:
 	input:
@@ -23,19 +26,24 @@ rule fastqc:
 		expand("FastQC/{sample}_{lane}_R1_001_fastqc.html",zip, sample=SAMPLES, lane=LANES),
 		expand("FastQC/{sample}_{lane}_R2_001_fastqc.html",zip, sample=SAMPLES, lane=LANES)
 
-	params:
-		threads = "5"
+	threads: 5
+
+	message:"Running FastQC for input file {input} using {threads} threads and saving as {output}"
 
 	shell:"""
-		fastqc -t {params.threads} {input.R1} {input.R2} --noextract -q -o FastQC
+		fastqc -t {threads} {input.R1} {input.R2} --noextract -q -o FastQC
 	"""
 
 rule multiqc:
 	input:
 		expand("FastQC/{sample}_{lane}_R1_001_fastqc.html",zip, sample=SAMPLES, lane=LANES),
 		expand("FastQC/{sample}_{lane}_R2_001_fastqc.html",zip, sample=SAMPLES, lane=LANES)
+
 	output:
 		"FastQC/multiqc_report.html"
+
+	message:"Running MultiQC for input file {input} and saving as {output}"
+
 	shell:"""
 			multiqc -f -q FastQC -o FastQC
 		"""
@@ -46,20 +54,22 @@ rule bwa_mem:
 		R2="FASTQ/{sample}_{lane}_R2_001.fastq.gz"
 
 	output:
-		"BWA_MEM/{sample}_{lane}.sam"
+		SAM="BWA_MEM/{sample}_{lane}.sam"
 
 	params:
 		REF=config["REF"],
-		RG=r"@RG\tID:{sample}\tLB:{sample}\tSM:{sample}\tPL:ILLUMINA"
+		RG=r"@RG\tID:{sample}\tLB:{sample}_{lane}\tSM:{sample}\tPL:ILLUMINA"
 
 	log:"LOGS/BWA_MEM/{sample}_{lane}.log"
+
+	benchmark:"LOGS/BWA_MEM/{sample}_{lane}.tsv"
 
 	threads: 5
 
 	message:"Running BWA_MEM for input file {input} using {threads} threads and saving as {output}"
 
 	shell:"""
-			bwa mem -t {threads} -M -v 1 -R '{params.RG}' {params.REF} {input.R1} {input.R2} > {output} 2> {log}
+			bwa mem -t {threads} -M -v 1 -R '{params.RG}' {params.REF} {input.R1} {input.R2} > {output.SAM} 2> {log}
 		"""
 
 rule samtosortedbam:
@@ -67,76 +77,164 @@ rule samtosortedbam:
 		"BWA_MEM/{sample}_{lane}.sam"
 
 	output:
-		"SamToSortedBam/{sample}_{lane}.bam"
+		BAM="SamToSortedBam/{sample}_{lane}.bam"
 
 	params:
 		REF=config["REF"],
 		INDEX="true",
 		VS="LENIENT",
-		MRIR="3000000"
+		MRIR="3000000",
+		SO="coordinate"
 
 	log:"LOGS/SamToSortedBam/{sample}_{lane}.log"
+
+	benchmark:"LOGS/SamToSortedBam/{sample}_{lane}.tsv"
 
 	message:"Running SamSort for {input} saving sorted index BAM as {output}"
 
 	shell:"""
 			gatk --java-options "-Xmx14G -XX:ParallelGCThreads=2" SortSam \
 			--INPUT {input} \
-			--OUTPUT {output} \
+			--OUTPUT {output.BAM} \
 			--CREATE_INDEX {params.INDEX} \
 			-R {params.REF} \
 			--VALIDATION_STRINGENCY {params.VS} \
 			--MAX_RECORDS_IN_RAM {params.MRIR} \
-			--SORT_ORDER coordinate 2> {log}
+			--SORT_ORDER {params.SO} 2> {log}
 		"""
-
-rule markduplicates:
+rule mergebamlist:
 	input:
-		"SamToSortedBam/output.bam"
+		L1="SamToSortedBam/{sample}_L001.bam",
+		L2="SamToSortedBam/{sample}_L002.bam"
 
 	output:
-		"MarkDuplicates/output.dedup.bam"
+		BAM="MergeBAMList/{sample}.bam"
+
+	params:
+		REF=config["REF"],
+		INDEX="true",
+		VS="STRICT",
+		MRIR="8000000",
+		THREADING="true",
+		SO="coordinate"
+
+	log:"LOGS/MergeBAMList/{sample}.log"
+
+	benchmark:"LOGS/MergeBAMList/{sample}.tsv"
+
+	message:"Running MergeSam for {input} saving as {output}"
+
+	shell:"""
+			gatk --java-options "-Xmx14G -XX:ParallelGCThreads=2" MergeSamFiles \
+			--INPUT {input.L1} \
+			--INPUT {input.L2} \
+			--OUTPUT {output.BAM} \
+			-R {params.REF} \
+			--MAX_RECORDS_IN_RAM {params.MRIR} \
+			--USE_THREADING {params.THREADING} \
+			--SORT_ORDER {params.SO} \
+			--CREATE_INDEX {params.INDEX} \
+			--VALIDATION_STRINGENCY {params.VS} 2> {log}
+	"""
+rule markduplicates:
+	input:
+		"MergeBAMList/{sample}.bam"
+
+	output:
+		BAM="MarkDuplicates/{sample}.dedup.bam",
+		METRICS="MarkDuplicates/{sample}.MD.metrics.txt"
+
+	params:
+		REF=config["REF"],
+		INDEX="true",
+		VS="STRICT",
+		MRIR="3000000"
+
+	log: "LOGS/MarkDuplicates/{sample}.log"
+
+	benchmark:"LOGS/MarkDuplicates/{sample}.tsv"
+
+	message:"Running MarkDuplicates for {input} saving as {output}"
 
 	shell:"""
 			gatk --java-options "-Xmx16G -XX:ParallelGCThreads=2"  MarkDuplicates \
 			--INPUT {input} \
-			--OUTPUT {output} \
-			--METRICS_FILE MarkDuplicates/output.MD.metrics.txt \
-			--CREATE_INDEX true \
-			--VALIDATION_STRINGENCY STRICT \
-			--MAX_RECORDS_IN_RAM 3000000
+			--OUTPUT {output.BAM} \
+			-R {params.REF} \
+			--METRICS_FILE {output.METRICS} \
+			--CREATE_INDEX {params.INDEX} \
+			--VALIDATION_STRINGENCY {params.VS} \
+			--MAX_RECORDS_IN_RAM {params.MRIR} 2> {log}
 	"""
 
 rule baserecal:
 	input:
-		"MarkDuplicates/output.dedup.bam"
+		"MarkDuplicates/{sample}.dedup.bam"
 
 	output:
-		"BQSR_sample_lvl/output.Recal_data.grp"
+		RECAL_DATA="BQSR_sample_lvl/{sample}.Recal_data.grp"
+
+	params:
+		REF=config["REF"],
+		INTERVALS=config["INTERVALS"],
+		PADDING=config["PADDING"],
+		DBSNP=config["DBSNP"],
+		MILLS_1KG_GOLD=config["MILLS_1KG_GOLD"],
+		PHASE1_INDELS=config["PHASE1_INDELS"],
+		PHASE1_SNPS=config["PHASE1_SNPS"]
+
+	threads: 4
+
+	log:"LOGS/BQSR_sample_lvl/{sample}.recal.log"
+
+	benchmark:"LOGS/BQSR_sample_lvl/{sample}.recal.tsv"
+
+	message: "Running BaseRecalibrator for {input} using {threads} threads and saving as {output}"
 
 	shell:"""
 			gatk --java-options "-Xmx18G" BaseRecalibrator \
-			-L intervals.interval_list \
-			--interval-padding 100 \
+			-R {params.REF} \
+			{params.INTERVALS} \
+			--interval-padding {params.PADDING} \
 			--input {input} \
-			--known-sites /home/GATK_Bundle/b37/dbsnp_138.b37.vcf \
-			--known-sites /home/GATK_Bundle/b37/Mills_and_1000G_gold_standard.indels.b37.vcf \
-			--known-sites /home/GATK_Bundle/b37/1000G_phase1.indels.b37.vcf \
-			--reference /home/GATK_Bundle/b37/human_g1k_v37_decoy.fasta \
-			--output {output}
+			--known-sites {params.DBSNP} \
+			--known-sites {params.MILLS_1KG_GOLD} \
+			--known-sites {params.PHASE1_INDELS} \
+			--known-sites {params.PHASE1_SNPS} \
+			--output {output.RECAL_DATA} 2> {log}
 	"""
 
 rule applybqsr:
 	input:
-		"MarkDuplicates/output.dedup.bam"
+		BAM="MarkDuplicates/{sample}.dedup.bam",
+		RECAL_DATA="BQSR_sample_lvl/{sample}.Recal_data.grp"
+
 	output:
-		"BQSR_sample_lvl/output.recalibrated.bam"
+		BAM="BQSR_sample_lvl/{sample}.recalibrated.bam"
+
+	params:
+		REF=config["REF"],
+		INTERVALS=config["INTERVALS"],
+		PADDING=config["PADDING"],
+		DBSNP=config["DBSNP"],
+		MILLS_1KG_GOLD=config["MILLS_1KG_GOLD"],
+		PHASE1_INDELS=config["PHASE1_INDELS"],
+		PHASE1_SNPS=config["PHASE1_SNPS"]
+
+	threads: 4
+
+	log:"LOGS/BQSR_sample_lvl/{sample}.bqsr.log"
+
+	benchmark:"LOGS/BQSR_sample_lvl/{sample}.bqsr.tsv"
+
+	message: "Running ApplyBQSR for {input.BAM} using {threads} threads and saving as {output.BAM}"
+
 	shell:"""
 			gatk --java-options "-Xmx18G" ApplyBQSR \
-			-L intervals.interval_list \
-			--interval-padding 100 \
-			-I MarkDuplicates/output.dedup.bam \
-			-R /home/GATK_Bundle/b37/human_g1k_v37_decoy.fasta \
-			--bqsr-recal-file BQSR_sample_lvl/output.Recal_data.grp \
-			--output {output}
+			{params.INTERVALS} \
+			--interval-padding {params.PADDING} \
+			--input {input.BAM} \
+			-R {params.REF} \
+			--bqsr-recal-file {input.RECAL_DATA} \
+			--output {output.BAM} 2> {log}
 	"""
