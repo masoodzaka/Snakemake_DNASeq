@@ -5,7 +5,7 @@
 #########################################################################################################################
 # Having base dir will allow to move up and down to the directory or scripts, also able to used different settings of
 # the pipeline.
-BASE_DIR: workflow.basedir
+BASE_DIR: "/home/Snakemake_DNASeq_Pipeline"
 
 
 ########################################################################################################################
@@ -32,9 +32,9 @@ BASE_DIR: workflow.basedir
 # OMNI 2.5 genotypes for 1000 Genomes samples, as well as sites, VCF
 # The latest set from 1000G phase 3 (v4) for genotype refinement
 REF: "/home/GATK_Bundle/b37/human_g1k_v37_decoy.fasta"
-MILLS_1KG_GOLD: ="/home/GATK_Bundle/b37/Mills_and_1000G_gold_standard.indels.b37.vcf"
-PHASE1_INDELS: ="/home/GATK_Bundle/b37/1000G_phase1.indels.b37.vcf"
-PHASE1_SNPS: ="/home/GATK_Bundle/b37/1000G_phase1.snps.high_confidence.b37.vcf"
+MILLS_1KG_GOLD: "/home/GATK_Bundle/b37/Mills_and_1000G_gold_standard.indels.b37.vcf"
+PHASE1_INDELS: "/home/GATK_Bundle/b37/1000G_phase1.indels.b37.vcf"
+PHASE1_SNPS: "/home/GATK_Bundle/b37/1000G_phase1.snps.high_confidence.b37.vcf"
 DBSNP: "/home/GATK_Bundle/b37/dbsnp_138.b37.vcf"
 DBSNP129: "/home/GATK_Bundle/b37/dbsnp_138.b37.excluding_sites_after_129.vcf"
 OMNI: "/home/GATK_Bundle/b37/1000G_omni2.5.b37.vcf "
@@ -51,7 +51,7 @@ AF_ONLY_GNOMAD: "/home/GATK_Bundle/b37/af-only-gnomad.biallelic.b37.vcf.gz"
 # Intervals files are actually subsets of the genomic region which restrict GATK to operate on a subset of geonmics regions.
 # An empty or blank string will automatically disable the parameter if you are running WGS data.
 
-INTERVALS: "-L $BASE_DIR/intervals.interval_list"
+INTERVALS: "-L /home/Snakemake_DNASeq_Pipeline/intervals.interval_list"
 
 # Padding, a parameter used in the interval padding in GATK
 
