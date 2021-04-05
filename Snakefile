@@ -3,85 +3,62 @@ __licence__ = "MIT"
 
 shell.prefix("set -o pipefail; ")
 
-
 configfile: "config.yaml"
 
-SAMPLES, LANES = glob_wildcards("FASTQ/{sample}_{lane}_R1_001.fastq.gz")
+# include functions.py modules
+include: "SCRIPTS/functions.py"
 
+# Sample list
+SAMPLES = MASTER_LIST["sample"].unique()
+
+# Target rules
+
+ALL_RECALIBRATED_BAM = expand("BQSR_sample_lvl/{sample}.dedup.recalibrated.bam", sample=SAMPLES)
+ALL_BAMFASTQC = expand("QC/BAMQC/{sample}.dedup.recalibrated_fastqc.html", sample=SAMPLES)
+ALL_SAMTOOLSFLAGSTAT = expand("QC/SAMTOOLSFLAGSTAT/{sample}.dedup.recalibrated.flagstat", sample=SAMPLES)
+ALL_HS_METRICS = expand("QC/HsMetrics/{sample}.dedup.recalibrated.hs_metrics.txt", sample=SAMPLES)
+BAMQC = ["QC/BAMQC/BAMmultiqc_report.html"]
+
+ALL = []
+
+ALL.extend(ALL_RECALIBRATED_BAM)
+ALL.extend(ALL_BAMFASTQC)
+ALL.extend(ALL_SAMTOOLSFLAGSTAT)
+ALL.extend(ALL_HS_METRICS)
+ALL.extend(BAMQC)
 
 rule all:
 	input:
-		"QC/FastQC/multiqc_report.html",
-		"QC/BAMQC/multiqc_report.html",
-		expand("SamToSortedBam/{sample}_{lane}.bam",zip, sample=SAMPLES, lane=LANES),
-		expand("MergeBAMList/{sample}.bam", sample=SAMPLES),
-		expand("MarkDuplicates/{sample}.dedup.bam", sample=SAMPLES),
-		expand("BQSR_sample_lvl/{sample}.recalibrated.bam", sample=SAMPLES),
-		expand("QC/BAMQC/{sample}.recalibrated_fastqc.html", sample=SAMPLES),
-		expand("QC/SAMTOOLSFLAGSTAT/{sample}.recalibrated.bam.flagstat", sample=SAMPLES),
-		expand("QC/DofC/{sample}.recalibrated.DofC", sample=SAMPLES)
-
-rule fastqc:
-	input:
-		R1=expand("FASTQ/{sample}_{lane}_R1_001.fastq.gz",zip, sample=SAMPLES, lane=LANES),
-		R2=expand("FASTQ/{sample}_{lane}_R2_001.fastq.gz",zip, sample=SAMPLES, lane=LANES)
-
-	output:
-		expand("QC/FastQC/{sample}_{lane}_R1_001_fastqc.html",zip, sample=SAMPLES, lane=LANES),
-		expand("QC/FastQC/{sample}_{lane}_R2_001_fastqc.html",zip, sample=SAMPLES, lane=LANES)
-
-	threads: 5
-
-		message:"Running FastQC for input file {input} using {threads} threads and saving as {output}"
-
-	shell:"""
-		fastqc -t {threads} {input.R1} {input.R2} --noextract -q -o QC/FastQC
-	"""
-
-rule multiqc:
-	input:
-		expand("QC/FastQC/{sample}_{lane}_R1_001_fastqc.html",zip, sample=SAMPLES, lane=LANES),
-		expand("QC/FastQC/{sample}_{lane}_R2_001_fastqc.html",zip, sample=SAMPLES, lane=LANES)
-
-	output:
-		"QC/FastQC/multiqc_report.html"
-
-	message:"Running MultiQC for input file {input} and saving as {output}"
-
-	shell:"""
-			multiqc -f QC/FastQC -q -o QC/FastQC
-		"""
+		ALL
 
 rule bwa_mem:
 	input:
-		R1="FASTQ/{sample}_{lane}_R1_001.fastq.gz",
-		R2="FASTQ/{sample}_{lane}_R2_001.fastq.gz"
-
+		unpack(bwa_input)
 	output:
-		SAM="BWA_MEM/{sample}_{lane}.sam"
+		SAM="BWA_MEM/{sample}.{runID}.sam"
 
 	params:
 		REF=config["REF"],
-		RG=r"@RG\tID:{sample}\tLB:{sample}_{lane}\tSM:{sample}\tPL:ILLUMINA"
+		RG=bwa_readgroup
 
-	log:"LOGS/BWA_MEM/{sample}_{lane}.log"
+	log:"LOGS/BWA_MEM/{sample}.{runID}.log"
 
-	benchmark:"LOGS/BWA_MEM/{sample}_{lane}.tsv"
+	benchmark:"LOGS/BWA_MEM/{sample}.{runID}.tsv"
 
 	threads: 5
 
 	message:"Running BWA_MEM for input file {input} using {threads} threads and saving as {output}"
 
 	shell:"""
-			bwa mem -t {threads} -M -v 1 -R '{params.RG}' {params.REF} {input.R1} {input.R2} > {output.SAM} 2> {log}
+			bwa mem -t {threads} -M -v 1 -R r'{params.RG}' {params.REF} {input.R1} {input.R2} > {output.SAM} 2> {log}
 		"""
 
 rule samtosortedbam:
 	input:
-		"BWA_MEM/{sample}_{lane}.sam"
+		"BWA_MEM/{sample}.{runID}.sam"
 
 	output:
-		BAM="SamToSortedBam/{sample}_{lane}.bam"
+		BAM="SamToSortedBam/{sample}.{runID}.bam"
 
 	params:
 		REF=config["REF"],
@@ -90,14 +67,14 @@ rule samtosortedbam:
 		MRIR="3000000",
 		SO="coordinate"
 
-	log:"LOGS/SamToSortedBam/{sample}_{lane}.log"
+	log:"LOGS/SamToSortedBam/{sample}.{runID}.log"
 
-	benchmark:"LOGS/SamToSortedBam/{sample}_{lane}.tsv"
+	benchmark:"LOGS/SamToSortedBam/{sample}.{runID}.tsv"
 
 	message:"Running SamSort for {input} saving sorted index BAM as {output}"
 
 	shell:"""
-			gatk --java-options "-Xmx14G -XX:ParallelGCThreads=2" SortSam \
+			gatk --java-options "-Xmx20G -XX:ParallelGCThreads=2" SortSam \
 			--INPUT {input} \
 			--OUTPUT {output.BAM} \
 			--CREATE_INDEX {params.INDEX} \
@@ -106,11 +83,10 @@ rule samtosortedbam:
 			--MAX_RECORDS_IN_RAM {params.MRIR} \
 			--SORT_ORDER {params.SO} 2> {log}
 		"""
+
 rule mergebamlist:
 	input:
-		L1="SamToSortedBam/{sample}_L001.bam",
-		L2="SamToSortedBam/{sample}_L002.bam"
-
+		mergebam_input,
 	output:
 		BAM="MergeBAMList/{sample}.bam"
 
@@ -129,9 +105,13 @@ rule mergebamlist:
 	message:"Running MergeSam for {input} saving as {output}"
 
 	shell:"""
-			gatk --java-options "-Xmx14G -XX:ParallelGCThreads=2" MergeSamFiles \
-			--INPUT {input.L1} \
-			--INPUT {input.L2} \
+			INPUT=""
+			for i in {input}; do
+				INPUT+=" --INPUT $i"
+			done
+
+			gatk --java-options "-Xmx20G -XX:ParallelGCThreads=2" MergeSamFiles \
+			$INPUT \
 			--OUTPUT {output.BAM} \
 			-R {params.REF} \
 			--MAX_RECORDS_IN_RAM {params.MRIR} \
@@ -161,7 +141,7 @@ rule markduplicates:
 	message:"Running MarkDuplicates for {input} saving as {output}"
 
 	shell:"""
-			gatk --java-options "-Xmx16G -XX:ParallelGCThreads=2"  MarkDuplicates \
+			gatk --java-options "-Xmx20G -XX:ParallelGCThreads=2"  MarkDuplicates \
 			--INPUT {input} \
 			--OUTPUT {output.BAM} \
 			-R {params.REF} \
@@ -170,7 +150,6 @@ rule markduplicates:
 			--VALIDATION_STRINGENCY {params.VS} \
 			--MAX_RECORDS_IN_RAM {params.MRIR} 2> {log}
 	"""
-
 rule baserecal:
 	input:
 		"MarkDuplicates/{sample}.dedup.bam"
@@ -193,7 +172,7 @@ rule baserecal:
 
 	benchmark:"LOGS/BQSR_sample_lvl/{sample}.recal.tsv"
 
-	message: "Running BaseRecalibrator for {input} using {threads} threads and saving as {output}"
+	message: "Running GATK BaseRecalibrator for {input} using {threads} threads and saving as {output}"
 
 	shell:"""
 			gatk --java-options "-Xmx18G" BaseRecalibrator \
@@ -214,7 +193,7 @@ rule applybqsr:
 		RECAL_DATA="BQSR_sample_lvl/{sample}.Recal_data.grp"
 
 	output:
-		BAM="BQSR_sample_lvl/{sample}.recalibrated.bam"
+		BAM="BQSR_sample_lvl/{sample}.dedup.recalibrated.bam"
 
 	params:
 		REF=config["REF"],
@@ -231,7 +210,7 @@ rule applybqsr:
 
 	benchmark:"LOGS/BQSR_sample_lvl/{sample}.bqsr.tsv"
 
-	message: "Running ApplyBQSR for {input.BAM} using {threads} threads and saving as {output.BAM}"
+	message: "Running GATK ApplyBQSR for {input.BAM} using {threads} threads and saving as {output.BAM}"
 
 	shell:"""
 			gatk --java-options "-Xmx18G" ApplyBQSR \
@@ -244,10 +223,10 @@ rule applybqsr:
 	"""
 rule bamqc:
 	input:
-		"BQSR_sample_lvl/{sample}.recalibrated.bam"
+		"BQSR_sample_lvl/{sample}.dedup.recalibrated.bam"
 
 	output:
-		"QC/BAMQC/{sample}.recalibrated_fastqc.html"
+		"QC/BAMQC/{sample}.dedup.recalibrated_fastqc.html"
 
 	params:
 		BAM="bam"
@@ -265,9 +244,9 @@ rule bamqc:
 	"""
 rule samtoolsflagstat:
 	input:
-		"BQSR_sample_lvl/{sample}.recalibrated.bam"
+		"BQSR_sample_lvl/{sample}.dedup.recalibrated.bam"
 	output:
-		"QC/SAMTOOLSFLAGSTAT/{sample}.recalibrated.bam.flagstat"
+		"QC/SAMTOOLSFLAGSTAT/{sample}.dedup.recalibrated.flagstat"
 
 	threads: 1
 
@@ -281,43 +260,40 @@ rule samtoolsflagstat:
 		samtools flagstat {input} > {output} 2> {log}
 
 	"""
-rule multiqcBAM:
+
+rule HsMetrics:
 	input:
-		expand("QC/SAMTOOLSFLAGSTAT/{sample}.recalibrated.bam.flagstat", sample=SAMPLES),
-		expand("QC/BAMQC/{sample}.recalibrated_fastqc.zip", sample=SAMPLES)
+		BAM="BQSR_sample_lvl/{sample}.dedup.recalibrated.bam"
 
 	output:
-		"QC/BAMQC/multiqc_report.html"
+		"QC/HsMetrics/{sample}.dedup.recalibrated.hs_metrics.txt"
+
+	params:
+		T_INTERVALS=config["T_INTERVALS"],
+		B_INTERVALS=config["B_INTERVALS"]
+
+	log: "LOGS/QC/HsMetrics/{sample}.HsMetrics.txt"
+
+	benchmark: "LOGS/QC/HsMetrics/{sample}.HsMetrics.tsv"
+
+	message: "Running GATK HsMetrics for {input} and saving as {output}"
+
+	shell:"""
+		gatk --java-options "-Xmx18G" CollectHsMetrics \
+		--BAIT_INTERVALS {params.B_INTERVALS} \
+		--INPUT {input.BAM} \
+		--OUTPUT {output} \
+		--TARGET_INTERVALS {params.T_INTERVALS} 2> {log}
+	"""
+rule multiqcBAM:
+	input:
+		multiqcbam_input
+
+	output:
+		"QC/BAMQC/BAMmultiqc_report.html"
 
 	message: "Running MultiQCBAM for {input} and saving as {output}"
 
 	shell:"""
-		multiqc -f QC/BAMQC -q -o QC/BAMQC
-
-	"""
-rule DofC:
-	input:
-		BAM="BQSR_sample_lvl/{sample}.recalibrated.bam"
-
-	output:
-		"QC/DofC/{sample}.recalibrated.DofC"
-
-	params:
-		REF=config["REF"],
-		INTERVALS=config["INTERVALS"],
-		PADDING=config["PADDING"]
-
-	log: "LOGS/QC/DofC/{sample}.DofC.txt"
-
-	benchmark: "LOGS/QC/DofC/{sample}.DofC.tsv"
-
-	message: "Running GATK DofC for {input} and saving as {output}"
-
-	shell:"""
-		gatk --java-options "-Xmx18G" DepthOfCoverage \
-			{params.INTERVALS} \
-			--interval-padding {params.PADDING} \
-			--input {input.BAM} \
-			-R {params.REF} \
-			--output {output} 2> {log}
+		multiqc QC/SAMTOOLSFLAGSTAT QC/BAMQC QC/HsMetrics -n BAMmultiqc_report -d -f -q -o QC/BAMQC
 	"""
