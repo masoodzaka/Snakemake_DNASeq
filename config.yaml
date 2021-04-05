@@ -6,7 +6,10 @@
 # Having base dir will allow to move up and down to the directory or scripts, also able to used different settings of
 # the pipeline.
 BASE_DIR: "/home/Snakemake_DNASeq_Pipeline"
-
+# List of samples containing runID, readgroupd, path to Fastq1 and Fastq2
+MASTER_LIST: "/home/Snakemake_DNASeq_Pipeline/master_list.txt"
+# Global job name WGS or WES
+G_NAME: "WES"
 
 ########################################################################################################################
 #
@@ -52,6 +55,8 @@ AF_ONLY_GNOMAD: "/home/GATK_Bundle/b37/af-only-gnomad.biallelic.b37.vcf.gz"
 # An empty or blank string will automatically disable the parameter if you are running WGS data.
 
 INTERVALS: "-L /home/Snakemake_DNASeq_Pipeline/intervals.interval_list"
+T_INTERVALS: "/home/Snakemake_DNASeq_Pipeline/intervals.interval_list"
+B_INTERVALS: "/home/Snakemake_DNASeq_Pipeline/intervals.interval_list"
 
 # Padding, a parameter used in the interval padding in GATK
 
