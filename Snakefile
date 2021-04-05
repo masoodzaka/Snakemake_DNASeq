@@ -17,7 +17,7 @@ ALL_RECALIBRATED_BAM = expand("BQSR_sample_lvl/{sample}.dedup.recalibrated.bam",
 ALL_BAMFASTQC = expand("QC/BAMQC/{sample}.dedup.recalibrated_fastqc.html", sample=SAMPLES)
 ALL_SAMTOOLSFLAGSTAT = expand("QC/SAMTOOLSFLAGSTAT/{sample}.dedup.recalibrated.flagstat", sample=SAMPLES)
 ALL_HS_METRICS = expand("QC/HsMetrics/{sample}.dedup.recalibrated.hs_metrics.txt", sample=SAMPLES)
-BAMQC = ["QC/BAMQC/BAMmultiqc_report.html"]
+BAMQC = ["QC/BAMmultiqc_report.html"]
 
 ALL = []
 
@@ -224,14 +224,14 @@ rule applybqsr:
 rule bamqc:
 	input:
 		"BQSR_sample_lvl/{sample}.dedup.recalibrated.bam"
-
 	output:
-		"QC/BAMQC/{sample}.dedup.recalibrated_fastqc.html"
+		"QC/BAMQC/{sample}.dedup.recalibrated_fastqc.html",
+		"QC/BAMQC/{sample}.dedup.recalibrated_fastqc.zip"
 
 	params:
 		BAM="bam"
 
-	threads: 5
+	threads: 2
 
 	log: "LOGS/QC/BAMQC/{sample}.log"
 
@@ -290,10 +290,10 @@ rule multiqcBAM:
 		multiqcbam_input
 
 	output:
-		"QC/BAMQC/BAMmultiqc_report.html"
+		"QC/BAMmultiqc_report.html"
 
 	message: "Running MultiQCBAM for {input} and saving as {output}"
 
 	shell:"""
-		multiqc QC/SAMTOOLSFLAGSTAT QC/BAMQC QC/HsMetrics -n BAMmultiqc_report -d -f -q -o QC/BAMQC
+		multiqc QC/SAMTOOLSFLAGSTAT QC/BAMQC QC/HsMetrics -n BAMmultiqc_report -d -f -q -o QC
 	"""
