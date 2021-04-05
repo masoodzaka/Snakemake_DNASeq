@@ -33,8 +33,12 @@ def mergebam_input(wildcards):
 		sample=wildcards.sample,
 		runID=MASTER_LIST.loc[wildcards.sample].runID)
 
+def bamfastqc_input(wildcards):
+	return expand("QC/BAMQC/{sample}.dedup.recalibrated.bam",
+		sample=MASTER_LIST["sample"])
+
 def multiqcbam_input(wildcards):
-	return expand(["QC/SAMTOOLSFLAGSTAT/{sample}.dedup.recalibrated.flagstat",
-		"QC/BAMQC/{sample}.dedup.recalibrated_fastqc.zip",
+	return expand(["QC/BAMQC/{sample}.dedup.recalibrated_fastqc.zip",
+		"QC/SAMTOOLSFLAGSTAT/{sample}.dedup.recalibrated.flagstat",
 		"QC/HsMetrics/{sample}.dedup.recalibrated.hs_metrics.txt"],
-		sample=wildcards.sample)
+		sample=MASTER_LIST["sample"])
