@@ -10,6 +10,7 @@ from snakemake.utils import min_version
 configfile: "config.yaml"
 
 MASTER_LIST = pd.read_table(config["MASTER_LIST"], dtype=str).set_index(["sample","runID"], drop=False)
+
 MASTER_LIST.index = MASTER_LIST.index.set_levels([i.astype(str) for i in MASTER_LIST.index.levels])
 
 ##### Wildcard constraints #####
@@ -25,17 +26,13 @@ def bwa_input(wildcards):
 	return {"R1": fastqs.fastq1}
 
 def bwa_readgroup(wildcards):
-	rg = MASTER_LIST.loc[(wildcards.sample, wildcards.runID), ["rg"]].dropna()
-	return rg.rg
+	return r"-R '{rg.rg}'".format(rg=MASTER_LIST.loc[(wildcards.sample, wildcards.runID), ["rg"]].dropna())
+
 
 def mergebam_input(wildcards):
 	return expand("SamToSortedBam/{sample}.{runID}.bam",
 		sample=wildcards.sample,
 		runID=MASTER_LIST.loc[wildcards.sample].runID)
-
-def bamfastqc_input(wildcards):
-	return expand("QC/BAMQC/{sample}.dedup.recalibrated.bam",
-		sample=MASTER_LIST["sample"])
 
 def multiqcbam_input(wildcards):
 	return expand(["QC/BAMQC/{sample}.dedup.recalibrated_fastqc.zip",

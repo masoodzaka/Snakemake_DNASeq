@@ -5,6 +5,7 @@ shell.prefix("set -o pipefail; ")
 
 configfile: "config.yaml"
 
+
 # include functions.py modules
 include: "SCRIPTS/functions.py"
 
@@ -50,7 +51,7 @@ rule bwa_mem:
 	message:"Running BWA_MEM for input file {input} using {threads} threads and saving as {output}"
 
 	shell:"""
-			bwa mem -t {threads} -M -v 1 -R r'{params.RG}' {params.REF} {input.R1} {input.R2} > {output.SAM} 2> {log}
+			bwa mem -t {threads} -M -v 1 {params.RG} {params.REF} {input.R1} {input.R2} > {output.SAM} 2> {log}
 		"""
 
 rule samtosortedbam:
