@@ -12,6 +12,11 @@ include: "SCRIPTS/functions.py"
 # Sample list
 SAMPLES = MASTER_LIST["sample"].unique()
 
+# Mutect list
+
+NORMAL= list(MUTECT_LIST["normal"])
+TUMOUR= list(MUTECT_LIST["tumour"])
+
 # Target rules
 
 ALL_RECALIBRATED_BAM = expand("BQSR_sample_lvl/{sample}.dedup.recalibrated.bam", sample=SAMPLES)
@@ -19,6 +24,7 @@ ALL_BAMFASTQC = expand("QC/BAMQC/{sample}.dedup.recalibrated_fastqc.html", sampl
 ALL_SAMTOOLSFLAGSTAT = expand("QC/SAMTOOLSFLAGSTAT/{sample}.dedup.recalibrated.flagstat", sample=SAMPLES)
 ALL_HS_METRICS = expand("QC/HsMetrics/{sample}.dedup.recalibrated.hs_metrics.txt", sample=SAMPLES)
 BAMQC = ["QC/BAMmultiqc_report.html"]
+MUTECT = expand("MT2_Filt/{normal}.vs.{tumour}.somatic.vcf", zip,normal=NORMAL,tumour=TUMOUR)
 
 ALL = []
 
@@ -27,6 +33,7 @@ ALL.extend(ALL_BAMFASTQC)
 ALL.extend(ALL_SAMTOOLSFLAGSTAT)
 ALL.extend(ALL_HS_METRICS)
 ALL.extend(BAMQC)
+ALL.extend(MUTECT)
 
 rule all:
 	input:
@@ -297,4 +304,174 @@ rule multiqcBAM:
 
 	shell:"""
 		multiqc QC/SAMTOOLSFLAGSTAT QC/BAMQC QC/HsMetrics -n BAMmultiqc_report -d -f -q -o QC
+	"""
+rule mutect_paired:
+	input:
+		unpack(mutect_inputs)
+
+	output:
+		BAM="MT2/{normal}.vs.{tumour}.bam",
+		BAI="MT2/{normal}.vs.{tumour}.bai",
+		F1R2="MT2/{normal}.vs.{tumour}.f1r2.tar.gz",
+		VCF="MT2/{normal}.vs.{tumour}.vcf",
+		IDX="MT2/{normal}.vs.{tumour}.vcf.idx",
+
+	params:
+		REF=config["REF"],
+		INTERVALS=config["INTERVALS"],
+		PADDING=config["PADDING"],
+		AF_ONLY_GNOMAD=config["AF_ONLY_GNOMAD"],
+		PON=config["PON"],
+		B_NAME_N="{normal}"
+
+	threads: 4
+
+	log:"LOGS/MT2/{normal}.vs.{tumour}.log"
+
+	benchmark:"LOGS/MT2/{normal}.vs.{tumour}.tsv"
+
+	message: "Running GATK mutect2 for {input} using {threads} threads and saving as {output.BAM}"
+
+	shell:"""
+			gatk --java-options "-Xmx18G" Mutect2 \
+			{params.INTERVALS} \
+			--interval-padding {params.PADDING} \
+			-I {input.TUMOUR} \
+			-I {input.NORMAL} \
+			-normal {params.B_NAME_N} \
+			-R {params.REF} \
+			--germline-resource {params.AF_ONLY_GNOMAD} \
+			-pon {params.PON} \
+			--f1r2-tar-gz {output.F1R2}\
+			--output {output.VCF} \
+			--bam-output {output.BAM} 2> {log}
+	"""
+rule readsOrientation:
+	input:
+		F1R2="MT2/{normal}.vs.{tumour}.f1r2.tar.gz",
+
+	output:
+		LROM="MT2_Filt/{normal}.vs.{tumour}.read-orientation-model.tar.gz",
+
+	threads: 2
+
+	log:"LOGS/MT2_Filt/{normal}.vs.{tumour}.readsOrientation.log"
+
+	benchmark:"LOGS/MT2_Filt/{normal}.vs.{tumour}.readsOrientation.tsv"
+
+	message: "Running GATK readsOrientation for {input} using {threads} threads and saving as {output}"
+
+	shell:"""
+			gatk --java-options "-Xmx2G" LearnReadOrientationModel \
+			-I {input.F1R2} \
+			-O {output.LROM} 2> {log}
+	"""
+rule getPileupsummaries:
+	input:
+		unpack(mutect_inputs),
+
+	output:
+		PS_N="MT2_Filt/{normal}.vs.{tumour}_N.getpileupsummaries.table",
+		PS_T="MT2_Filt/{normal}.vs.{tumour}_T.getpileupsummaries.table",
+
+	params:
+		AF_ONLY_GNOMAD=config["AF_ONLY_GNOMAD"],
+
+	threads: 2
+
+	log:"LOGS/MT2_Filt/{normal}.vs.{tumour}.getPileupsummaries.log"
+
+	benchmark:"LOGS/MT2_Filt/{normal}.vs.{tumour}.getPileupsummaries.tsv"
+
+	message: "Running GATK getPileupsummaries for {input} using {threads} threads and saving as {output}"
+
+	shell:"""
+			gatk --java-options "-Xmx12G" GetPileupSummaries \
+			-I {input.NORMAL} \
+			-V {params.AF_ONLY_GNOMAD} \
+			-L {params.AF_ONLY_GNOMAD} \
+			-O {output.PS_N} 2> {log}
+
+			gatk --java-options "-Xmx12G" GetPileupSummaries \
+			-I {input.TUMOUR} \
+			-V {params.AF_ONLY_GNOMAD} \
+			-L {params.AF_ONLY_GNOMAD} \
+			-O {output.PS_T} 2>> {log}
+
+	"""
+rule calculateContamination:
+	input:
+		PS_N="MT2_Filt/{normal}.vs.{tumour}_N.getpileupsummaries.table",
+		PS_T="MT2_Filt/{normal}.vs.{tumour}_T.getpileupsummaries.table",
+
+	output:
+		CT="MT2_Filt/{normal}.vs.{tumour}.calculatecontamination.table",
+		ST="MT2_Filt/{normal}.vs.{tumour}.segment.table",
+
+	threads: 2
+
+	log:"LOGS/MT2_Filt/{normal}.vs.{tumour}.calculateContamination.log"
+
+	benchmark:"LOGS/MT2_Filt/{normal}.vs.{tumour}.calculateContamination.tsv"
+
+	message: "Running GATK calculateContamination for {input} using {threads} threads and saving as {output}"
+
+	shell:"""
+			gatk --java-options "-Xmx12G" CalculateContamination \
+			-I {input.PS_T}.getpileupsummaries.table \
+			-matched {input.PS_N}.getpileupsummaries.table \
+			-O {output.CT} \
+			--tumor-segmentation {output.ST} 2> {log}
+	"""
+rule filter_mutectCalls_paired:
+	input:
+		F1R2="MT2/{normal}.vs.{tumour}.f1r2.tar.gz",
+		VCF="MT2/{normal}.vs.{tumour}.vcf",
+		IDX="MT2/{normal}.vs.{tumour}.vcf.idx",
+		STATS="MT2/{normal}.vs.{tumour}.vcf.stats",
+		CT="MT2_Filt/{normal}.vs.{tumour}.calculatecontamination.table",
+		ST="MT2_Filt/{normal}.vs.{tumour}.segment.table",
+		LROM="MT2_Filt/{normal}.vs.{tumour}.read-orientation-model.tar.gz",
+
+	output:
+		F_STATS="MT2_Filt/{normal}.vs.{tumour}.filtering.stats",
+		Unfiltered_VCF="MT2_Filt/{normal}.vs.{tumour}.unfiltered.vcf",
+		Unfiltered_IDX="MT2_Filt/{normal}.vs.{tumour}.unfiltered.vcf.idx",
+		Somatic_VCF="MT2_Filt/{normal}.vs.{tumour}.somatic.vcf",
+		Somatic_IDX="MT2_Filt/{normal}.vs.{tumour}.somatic.vcf.idx",
+
+	params:
+		REF=config["REF"],
+		INTERVALS=config["INTERVALS"],
+		PADDING=config["PADDING"],
+		AF_ONLY_GNOMAD=config["AF_ONLY_GNOMAD"],
+		B_NAME_N="{normal}",
+		B_NAME_T="{tumour}"
+
+	threads: 2
+
+	log:"LOGS/MT2_Filt/{normal}.vs.{tumour}.log"
+
+	benchmark:"LOGS/MT2_Filt/{normal}.vs.{tumour}.tsv"
+
+	message: "Running GATK filtermutectCalls for {input.VCF} using {threads} threads and saving as {output.Somatic_VCF}"
+
+	shell:"""
+			gatk --java-options "-Xmx12G" FilterMutectCalls \
+			-R {params.REF} \
+			-V {input.VCF} \
+			--tumor-segmentation {input.ST} \
+			--contamination-table {input.CT} \
+			--ob-priors {input.LROM} \
+			-stats {input.STATS} \
+			--filtering-stats {output.F_STATS} \
+			-O {output.Unfiltered_VCF} 2> {log}
+
+			gatk --java-options "-Xmx12G" SelectVariants \
+			{params.INTERVALS} \
+			--interval-padding {params.PADDING} \
+			-V {output.Unfiltered_VCF} \
+			-R {params.REF} \
+			--exclude-filtered \
+			--output {output.Somatic_VCF} 2>> {log}
 	"""

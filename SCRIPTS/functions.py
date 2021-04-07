@@ -10,14 +10,20 @@ from snakemake.utils import min_version
 configfile: "config.yaml"
 
 MASTER_LIST = pd.read_table(config["MASTER_LIST"], dtype=str).set_index(["sample","runID"], drop=False)
-
 MASTER_LIST.index = MASTER_LIST.index.set_levels([i.astype(str) for i in MASTER_LIST.index.levels])
+
+MUTECT_LIST = pd.read_table(config["MUTECT_LIST"]).set_index(["normal","tumour"], drop=False)
+MUTECT_LIST.index = MUTECT_LIST.index.set_levels([i.astype(str) for i in MUTECT_LIST.index.levels])
+
+
 
 ##### Wildcard constraints #####
 wildcard_constraints:
 	vartype="snvs|indels",
 	sample="|".join(MASTER_LIST["sample"].unique()),
-	runID="|".join(MASTER_LIST["runID"])
+	runID="|".join(MASTER_LIST["runID"]),
+	normal="|".join(MUTECT_LIST["normal"]),
+	tumour="|".join(MUTECT_LIST["tumour"])
 
 def bwa_input(wildcards):
 	fastqs = MASTER_LIST.loc[(wildcards.sample, wildcards.runID), ["fastq1", "fastq2"]].dropna()
@@ -39,3 +45,6 @@ def multiqcbam_input(wildcards):
 		"QC/SAMTOOLSFLAGSTAT/{sample}.dedup.recalibrated.flagstat",
 		"QC/HsMetrics/{sample}.dedup.recalibrated.hs_metrics.txt"],
 		sample=MASTER_LIST["sample"])
+def mutect_inputs(wildcards):
+	inputs = MUTECT_LIST.loc[(wildcards.normal, wildcards.tumour), ["normal", "tumour"]].dropna()
+	return {"NORMAL": "BQSR_sample_lvl/{}.dedup.recalibrated.bam".format(inputs.normal),"TUMOUR": "BQSR_sample_lvl/{}.dedup.recalibrated.bam".format(inputs.tumour)}
