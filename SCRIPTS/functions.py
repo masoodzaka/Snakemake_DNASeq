@@ -15,23 +15,28 @@ MASTER_LIST.index = MASTER_LIST.index.set_levels([i.astype(str) for i in MASTER_
 MUTECT_LIST = pd.read_table(config["MUTECT_LIST"]).set_index(["normal","tumour"], drop=False)
 MUTECT_LIST.index = MUTECT_LIST.index.set_levels([i.astype(str) for i in MUTECT_LIST.index.levels])
 
+# samples list from master_list
 
+SAMPLES = [ sample for sample in MASTER_LIST["sample"]]
 
-##### Wildcard constraints #####
-wildcard_constraints:
-	vartype="snvs|indels",
-	sample="|".join(MASTER_LIST["sample"].unique()),
-	runID="|".join(MASTER_LIST["runID"]),
-	normal="|".join(MUTECT_LIST["normal"]),
-	tumour="|".join(MUTECT_LIST["tumour"])
+# drop nan from from mutect list to get the paired samples only
+MT2_Paired = (MUTECT_LIST).dropna()
+
+# aggregate tumour samples using tumour column of mutect list
+MT2_TumourOnly = [tumour for tumour in MUTECT_LIST["tumour"]]
+
+# functions for rules inputs
 
 def bwa_input(wildcards):
+	""" function provides the rowwise fastqs from the master list in the form a python dictionary"""
 	fastqs = MASTER_LIST.loc[(wildcards.sample, wildcards.runID), ["fastq1", "fastq2"]].dropna()
 	if len(fastqs) == 2:
 		return {"R1": fastqs.fastq1, "R2": fastqs.fastq2}
-	return {"R1": fastqs.fastq1}
+	else:
+		return {"R1": fastqs.fastq1}
 
 def bwa_readgroup(wildcards):
+	"""this functions return the read group column for each sample and lane run"""
 	return r"-R '{rg.rg}'".format(rg=MASTER_LIST.loc[(wildcards.sample, wildcards.runID), ["rg"]].dropna())
 
 
@@ -44,7 +49,11 @@ def multiqcbam_input(wildcards):
 	return expand(["QC/BAMQC/{sample}.dedup.recalibrated_fastqc.zip",
 		"QC/SAMTOOLSFLAGSTAT/{sample}.dedup.recalibrated.flagstat",
 		"QC/HsMetrics/{sample}.dedup.recalibrated.hs_metrics.txt"],
-		sample=MASTER_LIST["sample"])
-def mutect_inputs(wildcards):
-	inputs = MUTECT_LIST.loc[(wildcards.normal, wildcards.tumour), ["normal", "tumour"]].dropna()
+		sample=SAMPLES)
+
+def mutect_paired_inputs(wildcards):
+	inputs = MT2_Paired.loc[(wildcards.normal, wildcards.tumour), ["normal", "tumour"]].dropna()
 	return {"NORMAL": "BQSR_sample_lvl/{}.dedup.recalibrated.bam".format(inputs.normal),"TUMOUR": "BQSR_sample_lvl/{}.dedup.recalibrated.bam".format(inputs.tumour)}
+
+def mutect_tumourOnly_inputs(wildcards):
+	return {"TUMOUR": "BQSR_sample_lvl/{}.dedup.recalibrated.bam".format(tumour) for tumour in MT2_TumourOnly}
