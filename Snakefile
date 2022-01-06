@@ -52,6 +52,8 @@ rule BWA_Mem:
 
 	threads: 5
 
+	conda : "ENVS/bwa.yaml"
+
 	message:"Running BWA_MEM for input file {input} using {threads} threads and saving as {output}"
 
 	shell:"""
@@ -78,6 +80,8 @@ rule SamToSortedBam:
 	benchmark:"LOGS/SamToSortedBam/{sample}.{runID}.tsv"
 
 	threads: 2
+
+	conda: "ENVS/gatk4.yaml"
 
 	message:"Running SamSort for {input} using {threads} threads and saving sorted index BAM as {output}"
 
@@ -112,6 +116,8 @@ rule MergeBamList:
 	benchmark:"LOGS/MergeBAMList/{sample}.tsv"
 
 	threads: 2
+
+	conda: "ENVS/gatk4.yaml",
 
 	message:"Running MergeSam for {input} using {threads} threads and using {threads} saving as {output}"
 
@@ -151,7 +157,9 @@ rule MarkDuplicates:
 
 	benchmark:"LOGS/MarkDuplicates/{sample}.tsv"
 
-	threads: 2,
+	threads: 2
+
+	conda: "ENVS/gatk4.yaml",
 
 	message:"Running MarkDuplicates for {input} using {threads} threads and saving as {output}"
 
@@ -184,6 +192,8 @@ rule BaseRecal:
 		PHASE1_SNPS=config["PHASE1_SNPS"]
 
 	threads: 4
+
+	conda: "ENVS/gatk4.yaml",
 
 	log:"LOGS/BQSR_sample_lvl/{sample}.recal.log"
 
@@ -225,6 +235,8 @@ rule ApplyBqsr:
 
 	threads: 4
 
+	conda: "ENVS/gatk4.yaml",
+
 	log:"LOGS/BQSR_sample_lvl/{sample}.bqsr.log"
 
 	benchmark:"LOGS/BQSR_sample_lvl/{sample}.bqsr.tsv"
@@ -252,6 +264,8 @@ rule BamQC:
 
 	threads: 2
 
+	conda: "ENVS/qc.yaml",
+
 	log: "LOGS/QC/BAMQC/{sample}.log"
 
 	benchmark: "LOGS/QC/BAMQC/{sample}.tsv"
@@ -268,6 +282,8 @@ rule SamtoolsFlagStat:
 		"QC/SAMTOOLSFLAGSTAT/{sample}.dedup.recalibrated.flagstat"
 
 	threads: 1
+
+	conda: "ENVS/samtools.yaml",
 
 	log: "LOGS/QC/SAMTOOLSFLAGSTAT/{sample}.log"
 
@@ -295,6 +311,8 @@ rule HsMetrics:
 
 	threads: 4,
 
+	conda: "ENVS/gatk4.yaml",
+
 	benchmark: "LOGS/QC/HsMetrics/{sample}.HsMetrics.tsv"
 
 	message: "Running GATK HsMetrics for {input} using {threads} threads and saving as {output}"
@@ -316,6 +334,8 @@ rule MultiqcBAM:
 	message: "Running MultiQCBAM for {input} using {threads} threads and saving as {output}"
 
 	threads: 2,
+
+	conda: "ENVS/qc.yaml"
 
 	shell:"""
 		multiqc QC/SAMTOOLSFLAGSTAT QC/BAMQC QC/HsMetrics -n BAMmultiqc_report -d -f -q -o QC
@@ -341,6 +361,8 @@ rule Mutect_Paired:
 		B_NAME_N="{normal}"
 
 	threads: 4
+
+	conda: "ENVS/gatk4.yaml",
 
 	log:"LOGS/MT2/{normal}.vs.{tumour}.log"
 
@@ -371,6 +393,8 @@ rule ReadsOrientation_Paired:
 
 	threads: 2
 
+	conda: "ENVS/gatk4.yaml",
+
 	log:"LOGS/MT2_Filt/{normal}.vs.{tumour}.readsOrientation.log"
 
 	benchmark:"LOGS/MT2_Filt/{normal}.vs.{tumour}.readsOrientation.tsv"
@@ -394,6 +418,8 @@ rule GetPileupsummaries_Paired:
 		AF_ONLY_GNOMAD=config["AF_ONLY_GNOMAD"],
 
 	threads: 2
+
+	conda: "ENVS/gatk4.yaml",
 
 	log:"LOGS/MT2_Filt/{normal}.vs.{tumour}.getPileupsummaries.log"
 
@@ -425,6 +451,8 @@ rule CalculateContamination_Paired:
 		ST=temp("MT2_Filt/{normal}.vs.{tumour}.segment.table"),
 
 	threads: 2
+
+	conda: "ENVS/gatk4.yaml",
 
 	log:"LOGS/MT2_Filt/{normal}.vs.{tumour}.calculateContamination.log"
 
@@ -466,6 +494,8 @@ rule Filter_MutectCalls_Paired:
 
 	threads: 2
 
+	conda: "ENVS/gatk4.yaml",
+
 	log:"LOGS/MT2_Filt/{normal}.vs.{tumour}.log"
 
 	benchmark:"LOGS/MT2_Filt/{normal}.vs.{tumour}.tsv"
@@ -492,7 +522,7 @@ rule Filter_MutectCalls_Paired:
 			--output {output.Somatic_VCF} 2>> {log}
 	"""
 
-rule Vep_Paired:
+rule VEP_Paired:
 	input:
 		VCF="MT2_Filt/{normal}.vs.{tumour}.somatic.vcf",
 		IDX="MT2_Filt/{normal}.vs.{tumour}.somatic.vcf.idx",
@@ -555,6 +585,8 @@ rule Mutect_TumorOnly:
 
 	threads: 4
 
+	conda: "ENVS/gatk4.yaml",
+
 	log:"LOGS/MT2_TumourOnly/{pon}.vs.{tumour}.log"
 
 	benchmark:"LOGS/MT2_TumourOnly/{pon}.vs.{tumour}.tsv"
@@ -582,6 +614,8 @@ rule ReadsOrientation_TumourOnly:
 
 	threads: 2
 
+	conda: "ENVS/gatk4.yaml",
+
 	log:"LOGS/MT2_TumourOnly_Filt/{pon}.vs.{tumour}.readsOrientation_TumourOnly.log"
 
 	benchmark:"LOGS/MT2_TumourOnly_Filt/{pon}.vs.{tumour}.readsOrientation_TumourOnly.tsv"
@@ -604,6 +638,8 @@ rule GetPileupsummaries_TumourOnly:
 		AF_ONLY_GNOMAD=config["AF_ONLY_GNOMAD"],
 
 	threads: 2
+
+	conda: "ENVS/gatk4.yaml",
 
 	log:"LOGS/MT2_TumourOnly_Filt/{pon}.vs.{tumour}.getPileupsummaries_TumourOnly.log"
 
@@ -629,6 +665,8 @@ rule CalculateContamination_TumourOnly:
 		ST=temp("MT2_TumourOnly_Filt/{pon}.vs.{tumour}.segment_TumourOnly.table"),
 
 	threads: 2
+
+	conda: "ENVS/gatk4.yaml",
 
 	log:"LOGS/MT2_TumourOnly_Filt/{pon}.vs.{tumour}.calculateContamination_TumourOnly.log"
 
@@ -667,6 +705,8 @@ rule Filter_MutectCalls_TumourOly:
 
 	threads: 2
 
+	conda: "ENVS/gatk4.yaml",
+
 	log:"LOGS/MT2_TumourOnly_Filt/{pon}.vs.{tumour}.log"
 
 	benchmark:"LOGS/MT2_TumourOnly_Filt/{pon}.vs.{tumour}.tsv"
@@ -693,7 +733,7 @@ rule Filter_MutectCalls_TumourOly:
 			--output {output.Somatic_VCF} 2>> {log}
 	"""
 
-rule Vep_TumourOnly:
+rule VEP_TumourOnly:
 	input:
 		VCF="MT2_TumourOnly_Filt/{pon}.vs.{tumour}.somatic.vcf",
 		IDX="MT2_TumourOnly_Filt/{pon}.vs.{tumour}.somatic.vcf.idx",

@@ -1,0 +1,9 @@
+channels:
+  - conda-forge
+  - bioconda
+  - cyclus
+dependencies:
+  - gatk4 =4.1.4
+  - samtools = 0.1.19
+  - java-jre = 8.45.14
+  - openjdk = 8.0.265
