@@ -533,8 +533,6 @@ rule VEP_Paired:
 	params:
 		REF=config["REF"],
 		VEP_DATA=config["VEP_DATA"],
-		B_NAME_N="{normal}",
-		B_NAME_T="{tumour}"
 
 	threads: 2
 
@@ -557,6 +555,10 @@ rule VEP_Paired:
 			--total_length \
 			--force_overwrite \
 			--tab \
+			--plugin ExACpLI,{params.VEP_DATA}/Plugins/ExACpLI_values.txt \
+			--plugin LoFtool,{params.VEP_DATA}/Plugins/LoFtool_scores.txt \
+			--plugin Carol \
+			--plugin Blosum62 \
 			-o {output.VEP} \
 			--buffer_size 5000 \
 			--fork 10 \
@@ -766,6 +768,10 @@ rule VEP_TumourOnly:
 			--total_length \
 			--force_overwrite \
 			--tab \
+			--plugin ExACpLI,{params.VEP_DATA}/Plugins/ExACpLI_values.txt \
+			--plugin LoFtool,{params.VEP_DATA}/Plugins/LoFtool_scores.txt \
+			--plugin Carol \
+			--plugin Blosum62 \
 			-o {output.VEP} \
 			--buffer_size 5000 \
 			--fork 10 \
