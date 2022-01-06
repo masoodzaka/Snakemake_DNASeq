@@ -15,8 +15,8 @@ include: "SCRIPTS/functions.py"
 #BAMQC = ["QC/BAMmultiqc_report.html"]
 MUTECT_PAIRED = expand("MT2_Filt/{normal}.vs.{tumour}.somatic.vcf", zip, normal=MT2_Paired["normal"], tumour=MT2_Paired["tumour"])
 VEP_PAIRED = expand("VEP/Paired/{normal}.vs.{tumour}.tsv", zip, normal=MT2_Paired["normal"], tumour=MT2_Paired["tumour"])
-MUTECT_TUMOURONLY = expand("MT2_TumourOnly_Filt/{pon}.vs.{tumour}.somatic.vcf",zip, pon=["PON"], tumour=MT2_TumourOnly)
-VEP_TUMOURONLY = expand("VEP/TumourOnly/{pon}.vs.{tumour}.tsv",zip, pon=["PON"], tumour=MT2_TumourOnly)
+MUTECT_TUMOURONLY = expand("MT2_TumourOnly_Filt/{pon}.vs.{tumour}.somatic.vcf", pon=["PON"], tumour=MT2_TumourOnly)
+VEP_TUMOURONLY = expand("VEP/TumourOnly/{pon}.vs.{tumour}.tsv", pon=["PON"], tumour=MT2_TumourOnly)
 
 
 # extend the ALL rule using python extend list function
