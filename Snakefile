@@ -14,7 +14,9 @@ include: "SCRIPTS/functions.py"
 #ALL_RECALIBRATED_BAM = expand("BQSR_sample_lvl/{sample}.dedup.recalibrated.bam", sample=SAMPLES)
 #BAMQC = ["QC/BAMmultiqc_report.html"]
 MUTECT_PAIRED = expand("MT2_Filt/{normal}.vs.{tumour}.somatic.vcf", zip, normal=MT2_Paired["normal"], tumour=MT2_Paired["tumour"])
-MUTECT_TUMOURONLY = expand("MT2_TumourOnly_Filt/{pon}.vs.{tumour}.somatic.vcf", pon=["PON"], tumour=MT2_TumourOnly)
+VEP_PAIRED = expand("VEP/Paired/{normal}.vs.{tumour}.tsv", zip, normal=MT2_Paired["normal"], tumour=MT2_Paired["tumour"])
+MUTECT_TUMOURONLY = expand("MT2_TumourOnly_Filt/{pon}.vs.{tumour}.somatic.vcf",zip, pon=["PON"], tumour=MT2_TumourOnly)
+VEP_TUMOURONLY = expand("VEP/TumourOnly/{pon}.vs.{tumour}.tsv",zip, pon=["PON"], tumour=MT2_TumourOnly)
 
 
 # extend the ALL rule using python extend list function
@@ -26,6 +28,8 @@ if config["MUTECT2"]["Paired"]:
 	ALL.extend(MUTECT_PAIRED)
 if config["MUTECT2"]["TumourOnly"]:
 	ALL.extend(MUTECT_TUMOURONLY)
+ALL.extend(VEP_PAIRED)
+ALL.extend(VEP_TUMOURONLY)
 
 rule ALL:
 	input:
@@ -487,6 +491,49 @@ rule Filter_MutectCalls_Paired:
 			--exclude-filtered \
 			--output {output.Somatic_VCF} 2>> {log}
 	"""
+
+rule Vep_Paired:
+	input:
+		VCF="MT2_Filt/{normal}.vs.{tumour}.somatic.vcf",
+		IDX="MT2_Filt/{normal}.vs.{tumour}.somatic.vcf.idx",
+
+	output:
+		VEP=protected("VEP/Paired/{normal}.vs.{tumour}.tsv"),
+
+	params:
+		REF=config["REF"],
+		VEP_DATA=config["VEP_DATA"],
+		B_NAME_N="{normal}",
+		B_NAME_T="{tumour}"
+
+	threads: 2
+
+	conda: "ENVS/vep.yaml"
+
+	log:"LOGS/VEP/{normal}.vs.{tumour}.log"
+
+	benchmark:"LOGS/VEP/{normal}.vs.{tumour}.tsv"
+
+	message: "Running Ensembl VEP for {input.VCF} using {threads} threads and saving as {output.VEP}"
+
+	shell:"""
+			vep \
+			-i {input.VCF} \
+			--offline \
+			--dir {params.VEP_DATA} \
+			--dir_cache {params.VEP_DATA} \
+			--everything \
+			--nearest symbol \
+			--total_length \
+			--force_overwrite \
+			--tab \
+			-o {output.VEP} \
+			--buffer_size 5000 \
+			--fork 10 \
+			--pick_allele \
+			--show_ref_allele 2>{log}
+	"""
+
 rule Mutect_TumorOnly:
 	input:
 		unpack(mutect_tumourOnly_inputs)
@@ -644,4 +691,44 @@ rule Filter_MutectCalls_TumourOly:
 			-R {params.REF} \
 			--exclude-filtered \
 			--output {output.Somatic_VCF} 2>> {log}
+	"""
+
+rule Vep_TumourOnly:
+	input:
+		VCF="MT2_TumourOnly_Filt/{pon}.vs.{tumour}.somatic.vcf",
+		IDX="MT2_TumourOnly_Filt/{pon}.vs.{tumour}.somatic.vcf.idx",
+
+	output:
+		VEP=protected("VEP/TumourOnly/{pon}.vs.{tumour}.tsv"),
+
+	params:
+		REF=config["REF"],
+		VEP_DATA=config["VEP_DATA"],
+
+	threads: 2
+
+	conda: "ENVS/vep.yaml"
+
+	log:"LOGS/VEP/{pon}.vs.{tumour}.log"
+
+	benchmark:"LOGS/VEP/{pon}.vs.{tumour}.tsv"
+
+	message: "Running Ensembl VEP for {input.VCF} using {threads} threads and saving as {output.VEP}"
+
+	shell:"""
+			vep \
+			-i {input.VCF} \
+			--offline \
+			--dir {params.VEP_DATA} \
+			--dir_cache {params.VEP_DATA} \
+			--everything \
+			--nearest symbol \
+			--total_length \
+			--force_overwrite \
+			--tab \
+			-o {output.VEP} \
+			--buffer_size 5000 \
+			--fork 10 \
+			--pick_allele \
+			--show_ref_allele 2>{log}
 	"""
