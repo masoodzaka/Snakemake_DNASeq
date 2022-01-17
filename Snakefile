@@ -70,6 +70,7 @@ rule SamToSortedBam:
 
 	params:
 		REF=config["REF"],
+		TMPDIR=config["TMPDIR"],
 		INDEX="true",
 		VS="LENIENT",
 		MRIR="3000000",
@@ -91,6 +92,7 @@ rule SamToSortedBam:
 			--OUTPUT {output.BAM} \
 			--CREATE_INDEX {params.INDEX} \
 			-R {params.REF} \
+			--TMP_DIR {params.TMPDIR} \
 			--VALIDATION_STRINGENCY {params.VS} \
 			--MAX_RECORDS_IN_RAM {params.MRIR} \
 			--SORT_ORDER {params.SO} 2> {log}
@@ -105,6 +107,7 @@ rule MergeBamList:
 
 	params:
 		REF=config["REF"],
+		TMPDIR=config["TMPDIR"],
 		INDEX="true",
 		VS="STRICT",
 		MRIR="8000000",
@@ -135,6 +138,7 @@ rule MergeBamList:
 			--USE_THREADING {params.THREADING} \
 			--SORT_ORDER {params.SO} \
 			--CREATE_INDEX {params.INDEX} \
+			--TMP_DIR {params.TMPDIR} \
 			--VALIDATION_STRINGENCY {params.VS} 2> {log}
 	"""
 rule MarkDuplicates:
@@ -149,6 +153,7 @@ rule MarkDuplicates:
 
 	params:
 		REF=config["REF"],
+		TMPDIR=config["TMPDIR"],
 		INDEX="true",
 		VS="STRICT",
 		MRIR="3000000"
@@ -168,6 +173,7 @@ rule MarkDuplicates:
 			--INPUT {input.BAM} \
 			--OUTPUT {output.BAM} \
 			-R {params.REF} \
+			--TMP_DIR {params.TMPDIR} \
 			--METRICS_FILE {output.METRICS} \
 			--CREATE_INDEX {params.INDEX} \
 			--VALIDATION_STRINGENCY {params.VS} \
@@ -184,8 +190,9 @@ rule BaseRecal:
 
 	params:
 		REF=config["REF"],
+		TMPDIR=config["TMPDIR"],
 		INTERVALS=config["INTERVALS"] if config["SEQUENCING"]["WES"] else " ",
-		PADDING=config["PADDING"] if config["SEQUENCING"]["WES"] else " ",
+		PADDING=config["PADDING"] if config["SEQUENCING"]["WES"] else 0,
 		DBSNP=config["DBSNP"],
 		MILLS_1KG_GOLD=config["MILLS_1KG_GOLD"],
 		PHASE1_INDELS=config["PHASE1_INDELS"],
@@ -207,6 +214,7 @@ rule BaseRecal:
 			{params.INTERVALS} \
 			--interval-padding {params.PADDING} \
 			--input {input.BAM} \
+			--tmp-dir {params.TMDPIR} \
 			--known-sites {params.DBSNP} \
 			--known-sites {params.MILLS_1KG_GOLD} \
 			--known-sites {params.PHASE1_INDELS} \
@@ -226,8 +234,9 @@ rule ApplyBqsr:
 
 	params:
 		REF=config["REF"],
+		TMPDIR=config["TMPDIR"],
 		INTERVALS= config["INTERVALS"] if config["SEQUENCING"]["WES"] else " ",
-		PADDING=config["PADDING"] if config["SEQUENCING"]["WES"] else " ",
+		PADDING=config["PADDING"] if config["SEQUENCING"]["WES"] else 0,
 		DBSNP=config["DBSNP"],
 		MILLS_1KG_GOLD=config["MILLS_1KG_GOLD"],
 		PHASE1_INDELS=config["PHASE1_INDELS"],
@@ -249,6 +258,7 @@ rule ApplyBqsr:
 			--interval-padding {params.PADDING} \
 			--input {input.BAM} \
 			-R {params.REF} \
+			--tmp-dir {params.TMPDIR} \
 			--bqsr-recal-file {input.RECAL_DATA} \
 			--output {output.BAM} 2> {log}
 	"""
