@@ -305,7 +305,7 @@ rule HsMetrics:
 
 	params:
 		T_INTERVALS=config["T_INTERVALS"] if config["SEQUENCING"]["WES"] else " ",
-		B_INTERVALS=config["B_INTERVALS"] if config["SEQUENCING"]["WES"] else 0,
+		B_INTERVALS=config["B_INTERVALS"] if config["SEQUENCING"]["WES"] else " ",
 
 	log: "LOGS/QC/HsMetrics/{sample}.HsMetrics.txt"
 
