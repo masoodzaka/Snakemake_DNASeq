@@ -12,7 +12,7 @@ configfile: "config.yaml"
 MASTER_LIST = pd.read_table(config["MASTER_LIST"], dtype=str).set_index(["sample","runID"], drop=False)
 MASTER_LIST.index = MASTER_LIST.index.set_levels([i.astype(str) for i in MASTER_LIST.index.levels])
 
-MUTECT_LIST = pd.read_table(config["MUTECT_LIST"]).set_index(["normal","tumour"], drop=False)
+MUTECT_LIST = pd.read_table(config["MUTECT_LIST"], dtype=str).set_index(["normal","tumour"], drop=False)
 MUTECT_LIST.index = MUTECT_LIST.index.set_levels([i.astype(str) for i in MUTECT_LIST.index.levels])
 
 # samples list from master_list
@@ -24,6 +24,13 @@ MT2_Paired = (MUTECT_LIST).dropna()
 
 # aggregate tumour samples using tumour column of mutect list
 MT2_TumourOnly = [tumour for tumour in MUTECT_LIST["tumour"]]
+
+# wildcard constraints
+
+wildcard_constraints:
+	tumour = "|".join(MT2_TumourOnly)
+
+
 
 # functions for rules inputs
 
@@ -56,4 +63,4 @@ def mutect_paired_inputs(wildcards):
 	return {"NORMAL": "BQSR_sample_lvl/{}.dedup.recalibrated.bam".format(inputs.normal),"TUMOUR": "BQSR_sample_lvl/{}.dedup.recalibrated.bam".format(inputs.tumour)}
 
 def mutect_tumourOnly_inputs(wildcards):
-	return {"TUMOUR": "BQSR_sample_lvl/{}.dedup.recalibrated.bam".format(tumour) for tumour in MT2_TumourOnly}
+	return {"TUMOUR": "BQSR_sample_lvl/{}.dedup.recalibrated.bam".format(wildcards.tumour)}

@@ -227,7 +227,7 @@ rule ApplyBqsr:
 	params:
 		REF=config["REF"],
 		INTERVALS= config["INTERVALS"] if config["SEQUENCING"]["WES"] else " ",
-		PADDING=config["PADDING"] if config["SEQUENCING"]["WES"] else " ",
+		PADDING=config["PADDING"] if config["SEQUENCING"]["WES"] else 0,
 		DBSNP=config["DBSNP"],
 		MILLS_1KG_GOLD=config["MILLS_1KG_GOLD"],
 		PHASE1_INDELS=config["PHASE1_INDELS"],
@@ -305,7 +305,7 @@ rule HsMetrics:
 
 	params:
 		T_INTERVALS=config["T_INTERVALS"] if config["SEQUENCING"]["WES"] else " ",
-		B_INTERVALS=config["B_INTERVALS"] if config["SEQUENCING"]["WES"] else " ",
+		B_INTERVALS=config["B_INTERVALS"] if config["SEQUENCING"]["WES"] else 0,
 
 	log: "LOGS/QC/HsMetrics/{sample}.HsMetrics.txt"
 
@@ -355,7 +355,7 @@ rule Mutect_Paired:
 	params:
 		REF=config["REF"],
 		INTERVALS=config["INTERVALS"] if config["SEQUENCING"]["WES"] else " ",
-		PADDING=config["PADDING"] if config["SEQUENCING"]["WES"] else " ",
+		PADDING=config["PADDING"] if config["SEQUENCING"]["WES"] else 0,
 		AF_ONLY_GNOMAD=config["AF_ONLY_GNOMAD"],
 		PON=config["PON"],
 		B_NAME_N="{normal}"
@@ -487,7 +487,7 @@ rule Filter_MutectCalls_Paired:
 	params:
 		REF=config["REF"],
 		INTERVALS=config["INTERVALS"] if config["SEQUENCING"]["WES"] else " ",
-		PADDING=config["PADDING"] if config["SEQUENCING"]["WES"] else " ",
+		PADDING=config["PADDING"] if config["SEQUENCING"]["WES"] else 0,
 		AF_ONLY_GNOMAD=config["AF_ONLY_GNOMAD"],
 		B_NAME_N="{normal}",
 		B_NAME_T="{tumour}"
@@ -581,7 +581,7 @@ rule Mutect_TumorOnly:
 	params:
 		REF=config["REF"],
 		INTERVALS=config["INTERVALS"] if config["SEQUENCING"]["WES"] else " ",
-		PADDING=config["PADDING"] if config["SEQUENCING"]["WES"] else " ",
+		PADDING=config["PADDING"] if config["SEQUENCING"]["WES"] else 0,
 		AF_ONLY_GNOMAD=config["AF_ONLY_GNOMAD"],
 		PON=config["PON"],
 
@@ -631,7 +631,7 @@ rule ReadsOrientation_TumourOnly:
 	"""
 rule GetPileupsummaries_TumourOnly:
 	input:
-		unpack(mutect_tumourOnly_inputs),
+		unpack(mutect_tumourOnly_inputs)
 
 	output:
 		PS_T=temp("MT2_TumourOnly_Filt/{pon}.vs.{tumour}_T.getpileupsummaries.table"),
@@ -702,7 +702,7 @@ rule Filter_MutectCalls_TumourOly:
 	params:
 		REF=config["REF"],
 		INTERVALS=config["INTERVALS"] if config["SEQUENCING"]["WES"] else " ",
-		PADDING=config["PADDING"] if config["SEQUENCING"]["WES"] else " ",
+		PADDING=config["PADDING"] if config["SEQUENCING"]["WES"] else 0,
 		AF_ONLY_GNOMAD=config["AF_ONLY_GNOMAD"],
 
 	threads: 2
