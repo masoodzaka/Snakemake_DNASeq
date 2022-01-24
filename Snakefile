@@ -145,7 +145,7 @@ rule MarkDuplicates:
 	output:
 		BAM=temp("MarkDuplicates/{sample}.dedup.bam"),
 		BAI=temp("MarkDuplicates/{sample}.dedup.bai"),
-		METRICS="MarkDuplicates/{sample}.MD.metrics.txt"
+		METRICS=temp("MarkDuplicates/{sample}.MD.metrics.txt")
 
 	params:
 		REF=config["REF"],
@@ -185,7 +185,7 @@ rule BaseRecal:
 	params:
 		REF=config["REF"],
 		INTERVALS=config["INTERVALS"] if config["SEQUENCING"]["WES"] else " ",
-		PADDING=config["PADDING"] if config["SEQUENCING"]["WES"] else " ",
+		PADDING=config["PADDING"] if config["SEQUENCING"]["WES"] else 0,
 		DBSNP=config["DBSNP"],
 		MILLS_1KG_GOLD=config["MILLS_1KG_GOLD"],
 		PHASE1_INDELS=config["PHASE1_INDELS"],
