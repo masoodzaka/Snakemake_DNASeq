@@ -6,7 +6,7 @@
 # Having base dir will allow to move up and down to the directory or scripts, also able to used different settings of
 # the pipeline.
 BASE_DIR: "/nobackup/mzaka/wgs"
-TMPDIR: "/nobackup/TMPDIR"
+TMPDIR: "/nobackup/scratch"
 # List of samples containing runID, readgroupd, path to Fastq1 and Fastq2
 # List of samples containing normals and tumour samples
 MASTER_LIST: "/nobackup/mzaka/wgs/master_list.txt"
@@ -47,18 +47,18 @@ MUTECT2:
 # HapMap genotypes and sites VCFs
 # OMNI 2.5 genotypes for 1000 Genomes samples, as well as sites, VCF
 # The latest set from 1000G phase 3 (v4) for genotype refinement
-REF: "/opt/databases/GATK_Bundle/b37/human_g1k_v37_decoy.fasta"
-MILLS_1KG_GOLD: "/opt/databases/GATK_Bundle/b37/Mills_and_1000G_gold_standard.indels.b37.vcf"
-PHASE1_INDELS: "/opt/databases/GATK_Bundle/b37/1000G_phase1.indels.b37.vcf"
-PHASE1_SNPS: "/opt/databases/GATK_Bundle/b37/1000G_phase1.snps.high_confidence.b37.vcf"
-DBSNP: "/opt/databases/GATK_Bundle/b37/dbsnp_138.b37.vcf"
-DBSNP129: "/opt/databases/GATK_Bundle/b37/dbsnp_138.b37.excluding_sites_after_129.vcf"
-OMNI: "/opt/databases/GATK_Bundle/b37/1000G_omni2.5.b37.vcf "
-HAPMAP: "/opt/databases/GATK_Bundle/b37/hapmap_3.3.b37.vcf"
-AF_ONLY_GNOMAD: "/opt/databases/GATK_Bundle/b37/af-only-gnomad.biallelic.b37.vcf.gz"
-PON: "/opt/databases/GATK_Bundle/b37/61_pon.vcf.gz"
-#PON: "/opt/databases/GATK_Bundle/b37/malawi_pon.vcf.gz"
-
+REF: "/nobackup/common/databases/GATK_Bundle/b37/human_g1k_v37_decoy.fasta"
+MILLS_1KG_GOLD: "/nobackup/common/databases/GATK_Bundle/b37/Mills_and_1000G_gold_standard.indels.b37.vcf"
+PHASE1_INDELS: "/nobackup/common/databases/GATK_Bundle/b37/1000G_phase1.indels.b37.vcf"
+PHASE1_SNPS: "/nobackup/common/databases/GATK_Bundle/b37/1000G_phase1.snps.high_confidence.b37.vcf"
+DBSNP: "/nobackup/common/databases/GATK_Bundle/b37/dbsnp_138.b37.vcf"
+DBSNP129: "/nobackup/common/databases/GATK_Bundle/b37/dbsnp_138.b37.excluding_sites_after_129.vcf"
+OMNI: "/nobackup/common/databases/GATK_Bundle/b37/1000G_omni2.5.b37.vcf "
+HAPMAP: "/nobackup/common/databases/GATK_Bundle/b37/hapmap_3.3.b37.vcf"
+AF_ONLY_GNOMAD: "/nobackup/common/databases/GATK_Bundle/b37/af-only-gnomad.biallelic.b37.vcf.gz"
+PON: "/nobackup/common/databases/GATK_Bundle/b37/61_pon.vcf.gz"
+#PON: "/nobackup/common/databases/GATK_Bundle/b37/malawi_pon.vcf.gz"
+WGS_BED: "/nobackup/common/databases/GATK_Bundle/b37/human_g1k_v37_decoy.bed"
 ########################################################################################################################
 #
 #                                       GATK settings and parameters
@@ -69,9 +69,9 @@ PON: "/opt/databases/GATK_Bundle/b37/61_pon.vcf.gz"
 # Intervals files are actually subsets of the genomic region which restrict GATK to operate on a subset of geonmics regions.
 # An empty or blank string will automatically disable the parameter if you are running WGS data.
 
-#INTERVALS: "-L /home/Snakemake_DNASeq_Pipeline/intervals.interval_list"
-#T_INTERVALS: "/home/Snakemake_DNASeq_Pipeline/intervals.interval_list"
-#B_INTERVALS: "/home/Snakemake_DNASeq_Pipeline/intervals.interval_list"
+INTERVALS: "-L /home/Snakemake_DNASeq_Pipeline/intervals.interval_list"
+T_INTERVALS: "/home/Snakemake_DNASeq_Pipeline/intervals.interval_list"
+B_INTERVALS: "/home/Snakemake_DNASeq_Pipeline/intervals.interval_list"
 
 # Padding, a parameter used in the interval padding in GATK
 
@@ -83,5 +83,15 @@ PADDING: 100
 #
 #########################################################################################################################
 
-VEP_DATA: "/opt/databases/ensembl-vep/100/VEP_DATA/.vep"
+VEP_DATA: "/nobackup/common/databases/ensembl-vep/100/VEP_DATA/.vep"
 #PLUGINS: "/opt/databases/ensembl-vep/100/VEP_DATA/.vep/Plugins"
+
+#########################################################################################################################
+#
+#                                 Reported issues with gatk v4.1.4.0
+#
+#########################################################################################################################
+# There is bug in in the gat4 for version 4.1.4.0 in the select variant stage because SelectVarinat historically assumed every input was a germline site with PL
+# values (genotype likelihoods) for every possible combination of alleles and ploidy and generate an expensive cache of these indices. 
+# for more reference https://github.com/broadinstitute/gatk/issues/6254
+# the issue was sorted in the next release of v4.1.5.0

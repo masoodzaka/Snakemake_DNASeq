@@ -23,7 +23,13 @@ SAMPLES = [ sample for sample in MASTER_LIST["sample"]]
 MT2_Paired = (MUTECT_LIST).dropna()
 
 # aggregate tumour samples using tumour column of mutect list
-MT2_TumourOnly = [tumour for tumour in MUTECT_LIST["tumour"]]
+MT2_TumourOnly = [tumour for tumour in MUTECT_LIST["tumour"].dropna().unique().tolist()]
+MT2_NormalOnly = [normal for normal in MUTECT_LIST["normal"].dropna().unique().tolist()]
+
+wildcard_constraints:
+	tumour = "|".join(MT2_TumourOnly),
+	normal = "|".join(MT2_NormalOnly)
+
 
 # functions for rules inputs
 
@@ -56,4 +62,7 @@ def mutect_paired_inputs(wildcards):
 	return {"NORMAL": "BQSR_sample_lvl/{}.dedup.recalibrated.bam".format(inputs.normal),"TUMOUR": "BQSR_sample_lvl/{}.dedup.recalibrated.bam".format(inputs.tumour)}
 
 def mutect_tumourOnly_inputs(wildcards):
-	return {"TUMOUR": "BQSR_sample_lvl/{}.dedup.recalibrated.bam".format(tumour) for tumour in MT2_TumourOnly}
+	return {"TUMOUR": "BQSR_sample_lvl/{}.dedup.recalibrated.bam".format(wildcards.tumour)}
+
+def mutect_pon_inputs(wildcards):
+	return {"NORMAL": "BQSR_sample_lvl/{}.dedup.recalibrated.bam".format(wildcards.normal)}

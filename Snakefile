@@ -12,7 +12,8 @@ include: "SCRIPTS/functions.py"
 
 # Target rules
 #ALL_RECALIBRATED_BAM = expand("BQSR_sample_lvl/{sample}.dedup.recalibrated.bam", sample=SAMPLES)
-#BAMQC = ["QC/BAMmultiqc_report.html"]
+BAMQC = ["QC/BAMmultiqc_report.html"]
+SOMATIC_PON=["PON/pon.vcf.gz"]
 MUTECT_PAIRED = expand("MT2_Filt/{normal}.vs.{tumour}.somatic.vcf", zip, normal=MT2_Paired["normal"], tumour=MT2_Paired["tumour"])
 VEP_PAIRED = expand("VEP/Paired/{normal}.vs.{tumour}.tsv", zip, normal=MT2_Paired["normal"], tumour=MT2_Paired["tumour"])
 MUTECT_TUMOURONLY = expand("MT2_TumourOnly_Filt/{pon}.vs.{tumour}.somatic.vcf", pon=["PON"], tumour=MT2_TumourOnly)
@@ -23,7 +24,8 @@ VEP_TUMOURONLY = expand("VEP/TumourOnly/{pon}.vs.{tumour}.tsv", pon=["PON"], tum
 ALL = []
 
 #ALL.extend(ALL_RECALIBRATED_BAM)
-#ALL.extend(BAMQC)
+ALL.extend(BAMQC)
+ALL.extend(SOMATIC_PON)
 if config["MUTECT2"]["Paired"]:
 	ALL.extend(MUTECT_PAIRED)
 if config["MUTECT2"]["TumourOnly"]:
@@ -314,12 +316,13 @@ rule HsMetrics:
 		"QC/HsMetrics/{sample}.dedup.recalibrated.hs_metrics.txt"
 
 	params:
-		T_INTERVALS=config["T_INTERVALS"] if config["SEQUENCING"]["WES"] else " ",
-		B_INTERVALS=config["B_INTERVALS"] if config["SEQUENCING"]["WES"] else " ",
+		T_INTERVALS=config["WGS_BED"],
+		B_INTERVALS=config["WGS_BED"],
+		TMPDIR=config["TMPDIR"],
 
-	log: "LOGS/QC/HsMetrics/{sample}.HsMetrics.txt"
+	log: "LOGS/QC/HsMetrics/{sample}.HsMetrics.log"
 
-	threads: 4,
+	threads: 24,
 
 	conda: "ENVS/gatk4.yaml",
 
@@ -328,12 +331,14 @@ rule HsMetrics:
 	message: "Running GATK HsMetrics for {input} using {threads} threads and saving as {output}"
 
 	shell:"""
-		gatk --java-options "-Xmx18G" CollectHsMetrics \
+		gatk --java-options "-Xmx96G" CollectHsMetrics \
 		--BAIT_INTERVALS {params.B_INTERVALS} \
 		--INPUT {input.BAM} \
+		--TMP_DIR {params.TMPDIR} \
 		--OUTPUT {output} \
 		--TARGET_INTERVALS {params.T_INTERVALS} 2> {log}
 	"""
+
 rule MultiqcBAM:
 	input:
 		multiqcbam_input
@@ -348,11 +353,102 @@ rule MultiqcBAM:
 	conda: "ENVS/qc.yaml"
 
 	shell:"""
-		multiqc QC/SAMTOOLSFLAGSTAT QC/BAMQC QC/HsMetrics -n BAMmultiqc_report -d -f -q -o QC
+		multiqc QC/SAMTOOLSFLAGSTAT QC/BAMQC QC/HsMetrics -n BAMmultiqc_report -f -q -o QC
 	"""
+
+
+rule Mutect_Pon:
+	input:
+		unpack(mutect_pon_inputs)
+	output:
+		VCF=temp("PON/{normal}.vcf.gz"),
+		IDX=temp("PON/{normal}.vcf.gz.tbi")		
+	params:
+		REF=config["REF"],
+		TMPDIR=config["TMPDIR"],
+                INTERVALS=config["INTERVALS"] if config["SEQUENCING"]["WES"] else " ",
+                PADDING=config["PADDING"] if config["SEQUENCING"]["WES"] else 0,
+                B_NAME_N="{normal}"
+	threads: 4
+	
+	conda: "ENVS/gatk4.yaml",
+	
+	log:"LOGS/PON/{normal}.log"
+	
+	benchmark:"LOGS/PON/{normal}.tsv"
+	
+	message: "Running GATK mutect for {input} using {threads} and saving as {output.VCF}"
+	
+	shell:"""
+		gatk --java-options "-Xmx12G" Mutect2 \
+		{params.INTERVALS} \
+		--interval-padding {params.PADDING} \
+		-I {input.NORMAL} \
+		-R {params.REF} \
+		--tmp-dir {params.TMPDIR} \
+		--max-mnp-distance 0 \
+		--output {output.VCF} 2> {log}		
+	"""
+rule Mutect_Pon_DBI:
+	input:
+		VCFS=expand("PON/{normal}.vcf.gz", normal=MT2_NormalOnly),
+		IDX=expand("PON/{normal}.vcf.gz.tbi", normal=MT2_NormalOnly)
+	output:
+		directory("PON/pon_db")	
+	params:
+		VCFS_Combined= lambda wildcards, input: " -V ".join(input.VCFS),
+		REF=config["REF"],
+                INTERVALS=config["WGS_BED"],
+	
+	threads: 2
+	
+	conda: "ENVS/gatk4.yaml",
+	
+	log:"LOGS/PON/pondb.log"
+	
+	benchmark:"LOGS/PON/pondb.tsv"
+	
+	message: "Running GATK Genomics DBImport for {input} and saving as directory {output}"
+
+	shell:"""
+		gatk --java-options "-Xmx2G" GenomicsDBImport \
+		-R {params.REF} \
+		-L {params.INTERVALS} \
+		--genomicsdb-workspace-path {output} \
+		-V {params.VCFS_Combined} 2> {log}
+	"""
+rule Mutect_Create_Pon:
+	input:
+		DB=directory("PON/pon_db")
+	output:
+		VCF=protected("PON/pon.vcf.gz"),
+		IDX=protected("PON/pon.vcf.gz.tbi")
+	params:
+		REF=config["REF"],
+		AF_ONLY_GNOMAD=config["AF_ONLY_GNOMAD"],
+
+	threads: 4
+
+	conda:"ENVS/gatk4.yaml",
+
+	log:"LOGS/PON/CreatePON.log"
+
+	benchmark:"LOGS/PON/CreatePON.tsv"
+
+	message: "Running GATK CreateSomaticPanelOfNormals for {input} and saving as directory {output.VCF}"
+
+	shell:"""
+		gatk --java-options "-Xmx2G" CreateSomaticPanelOfNormals \
+		-R {params.REF} \
+		--germline-resource {params.AF_ONLY_GNOMAD} \
+		-V gendb://{input.DB} \
+		-O {output.VCF} 2> {log}		
+	"""
+
 rule Mutect_Paired:
 	input:
-		unpack(mutect_paired_inputs)
+		unpack(mutect_paired_inputs),
+		PON=("PON/pon.vcf.gz"),
 
 	output:
 		BAM=protected("MT2/{normal}.vs.{tumour}.bam"),
@@ -364,10 +460,11 @@ rule Mutect_Paired:
 
 	params:
 		REF=config["REF"],
+		TMPDIR=config["TMPDIR"],
 		INTERVALS=config["INTERVALS"] if config["SEQUENCING"]["WES"] else " ",
-		PADDING=config["PADDING"] if config["SEQUENCING"]["WES"] else " ",
+		PADDING=config["PADDING"] if config["SEQUENCING"]["WES"] else 0,
 		AF_ONLY_GNOMAD=config["AF_ONLY_GNOMAD"],
-		PON=config["PON"],
+		#PON=config["PON"],
 		B_NAME_N="{normal}"
 
 	threads: 4
@@ -381,15 +478,16 @@ rule Mutect_Paired:
 	message: "Running GATK mutect2 for {input} using {threads} threads and saving as {output.BAM}"
 
 	shell:"""
-			gatk --java-options "-Xmx18G" Mutect2 \
+			gatk --java-options "-Xmx12G" Mutect2 \
 			{params.INTERVALS} \
 			--interval-padding {params.PADDING} \
 			-I {input.TUMOUR} \
 			-I {input.NORMAL} \
 			-normal {params.B_NAME_N} \
 			-R {params.REF} \
+			--tmp-dir {params.TMPDIR} \
 			--germline-resource {params.AF_ONLY_GNOMAD} \
-			-pon {params.PON} \
+			-pon {input.PON} \
 			--f1r2-tar-gz {output.F1R2}\
 			--output {output.VCF} \
 			--bam-output {output.BAM} 2> {log}
@@ -402,6 +500,9 @@ rule ReadsOrientation_Paired:
 		LROM=temp("MT2_Filt/{normal}.vs.{tumour}.read-orientation-model.tar.gz"),
 
 	threads: 2
+	
+	params:
+		TMPDIR=config["TMPDIR"],
 
 	conda: "ENVS/gatk4.yaml",
 
@@ -414,6 +515,7 @@ rule ReadsOrientation_Paired:
 	shell:"""
 			gatk --java-options "-Xmx2G" LearnReadOrientationModel \
 			-I {input.F1R2} \
+			--tmp-dir {params.TMPDIR} \
 			-O {output.LROM} 2> {log}
 	"""
 rule GetPileupsummaries_Paired:
@@ -426,8 +528,9 @@ rule GetPileupsummaries_Paired:
 
 	params:
 		AF_ONLY_GNOMAD=config["AF_ONLY_GNOMAD"],
+		TMPDIR=config["TMPDIR"]
 
-	threads: 2
+	threads: 16
 
 	conda: "ENVS/gatk4.yaml",
 
@@ -442,12 +545,14 @@ rule GetPileupsummaries_Paired:
 			-I {input.NORMAL} \
 			-V {params.AF_ONLY_GNOMAD} \
 			-L {params.AF_ONLY_GNOMAD} \
+			--tmp-dir {params.TMPDIR} \
 			-O {output.PS_N} 2> {log}
 
 			gatk --java-options "-Xmx12G" GetPileupSummaries \
 			-I {input.TUMOUR} \
 			-V {params.AF_ONLY_GNOMAD} \
 			-L {params.AF_ONLY_GNOMAD} \
+			--tmp-dir {params.TMPDIR} \
 			-O {output.PS_T} 2>> {log}
 
 	"""
@@ -460,7 +565,7 @@ rule CalculateContamination_Paired:
 		CT=temp("MT2_Filt/{normal}.vs.{tumour}.calculatecontamination.table"),
 		ST=temp("MT2_Filt/{normal}.vs.{tumour}.segment.table"),
 
-	threads: 2
+	threads: 8
 
 	conda: "ENVS/gatk4.yaml",
 
@@ -491,26 +596,23 @@ rule Filter_MutectCalls_Paired:
 		F_STATS=protected("MT2_Filt/{normal}.vs.{tumour}.filtering.stats"),
 		Unfiltered_VCF=protected("MT2_Filt/{normal}.vs.{tumour}.unfiltered.vcf"),
 		Unfiltered_IDX=protected("MT2_Filt/{normal}.vs.{tumour}.unfiltered.vcf.idx"),
-		Somatic_VCF=protected("MT2_Filt/{normal}.vs.{tumour}.somatic.vcf"),
-		Somatic_IDX=protected("MT2_Filt/{normal}.vs.{tumour}.somatic.vcf.idx"),
-
+		
 	params:
 		REF=config["REF"],
+		TMPDIR=config["TMPDIR"],
 		INTERVALS=config["INTERVALS"] if config["SEQUENCING"]["WES"] else " ",
-		PADDING=config["PADDING"] if config["SEQUENCING"]["WES"] else " ",
+		PADDING=config["PADDING"] if config["SEQUENCING"]["WES"] else 0,
 		AF_ONLY_GNOMAD=config["AF_ONLY_GNOMAD"],
-		B_NAME_N="{normal}",
-		B_NAME_T="{tumour}"
-
-	threads: 2
+		
+	threads: 8
 
 	conda: "ENVS/gatk4.yaml",
 
-	log:"LOGS/MT2_Filt/{normal}.vs.{tumour}.log"
+	log:"LOGS/MT2_Filt/{normal}.vs.{tumour}.filtereMutectCalls.log"
 
-	benchmark:"LOGS/MT2_Filt/{normal}.vs.{tumour}.tsv"
+	benchmark:"LOGS/MT2_Filt/{normal}.vs.{tumour}.filtereMutectCalls.tsv"
 
-	message: "Running GATK filtermutectCalls for {input.VCF} using {threads} threads and saving as {output.Somatic_VCF}"
+	message: "Running GATK filtermutectCalls for {input.VCF} using {threads} threads and saving as {output.Unfiltered_VCF}"
 
 	shell:"""
 			gatk --java-options "-Xmx12G" FilterMutectCalls \
@@ -520,18 +622,48 @@ rule Filter_MutectCalls_Paired:
 			--contamination-table {input.CT} \
 			--ob-priors {input.LROM} \
 			-stats {input.STATS} \
+			--tmp-dir {params.TMPDIR} \
 			--filtering-stats {output.F_STATS} \
 			-O {output.Unfiltered_VCF} 2> {log}
+	"""
+rule Select_MutectCalls_Paired:
+	input:
+		Unfiltered_VCF=("MT2_Filt/{normal}.vs.{tumour}.unfiltered.vcf"),
+		Unfiltered_IDX=("MT2_Filt/{normal}.vs.{tumour}.unfiltered.vcf.idx"),
+		
+	output:
+		Somatic_VCF=protected("MT2_Filt/{normal}.vs.{tumour}.somatic.vcf"),
+		Somatic_IDX=protected("MT2_Filt/{normal}.vs.{tumour}.somatic.vcf.idx"),
 
-			gatk --java-options "-Xmx12G" SelectVariants \
+	params:
+		REF=config["REF"],
+		TMPDIR=config["TMPDIR"],
+		INTERVALS=config["INTERVALS"] if config["SEQUENCING"]["WES"] else " ",
+		PADDING=config["PADDING"] if config["SEQUENCING"]["WES"] else 0,
+		AF_ONLY_GNOMAD=config["AF_ONLY_GNOMAD"],
+		B_NAME_N="{normal}",
+		B_NAME_T="{tumour}"
+
+	threads: 8
+
+	conda: "ENVS/gatk4.yaml",
+
+	log:"LOGS/MT2_Filt/{normal}.vs.{tumour}.selectMutectCalls.log"
+
+	benchmark:"LOGS/MT2_Filt/{normal}.vs.{tumour}.selectMutectCalls.tsv"
+
+	message: "Running GATK filtermutectCalls for {input.Unfiltered_VCF} using {threads} threads and saving as {output.Somatic_VCF}"
+
+	shell:"""
+			gatk --java-options "-Xmx4G" SelectVariants \
 			{params.INTERVALS} \
 			--interval-padding {params.PADDING} \
-			-V {output.Unfiltered_VCF} \
+			-V {input.Unfiltered_VCF} \
 			-R {params.REF} \
+			--tmp-dir {params.TMPDIR} \
 			--exclude-filtered \
 			--output {output.Somatic_VCF} 2>> {log}
 	"""
-
 rule VEP_Paired:
 	input:
 		VCF="MT2_Filt/{normal}.vs.{tumour}.somatic.vcf",
@@ -544,7 +676,7 @@ rule VEP_Paired:
 		REF=config["REF"],
 		VEP_DATA=config["VEP_DATA"],
 
-	threads: 2
+	threads: 4
 
 	conda: "ENVS/vep.yaml"
 
@@ -578,7 +710,8 @@ rule VEP_Paired:
 
 rule Mutect_TumorOnly:
 	input:
-		unpack(mutect_tumourOnly_inputs)
+		unpack(mutect_tumourOnly_inputs),
+		PON=("PON/pon.vcf.gz"),
 
 	output:
 		BAM=protected("MT2_TumourOnly/{pon}.vs.{tumour}.bam"),
@@ -590,10 +723,10 @@ rule Mutect_TumorOnly:
 
 	params:
 		REF=config["REF"],
+		TMPDIR=config["TMPDIR"],
 		INTERVALS=config["INTERVALS"] if config["SEQUENCING"]["WES"] else " ",
-		PADDING=config["PADDING"] if config["SEQUENCING"]["WES"] else " ",
+		PADDING=config["PADDING"] if config["SEQUENCING"]["WES"] else 0,
 		AF_ONLY_GNOMAD=config["AF_ONLY_GNOMAD"],
-		PON=config["PON"],
 
 	threads: 4
 
@@ -606,13 +739,14 @@ rule Mutect_TumorOnly:
 	message: "Running GATK mutect2 for {input} using {threads} threads and saving as {output.BAM}"
 
 	shell:"""
-			gatk --java-options "-Xmx18G" Mutect2 \
+			gatk --java-options "-Xmx12G" Mutect2 \
 			{params.INTERVALS} \
 			--interval-padding {params.PADDING} \
 			-I {input.TUMOUR} \
 			-R {params.REF} \
 			--germline-resource {params.AF_ONLY_GNOMAD} \
-			-pon {params.PON} \
+			-pon {input.PON} \
+			--tmp-dir {params.TMPDIR} \
 			--f1r2-tar-gz {output.F1R2}\
 			--output {output.VCF} \
 			--bam-output {output.BAM} 2> {log}
@@ -648,8 +782,9 @@ rule GetPileupsummaries_TumourOnly:
 
 	params:
 		AF_ONLY_GNOMAD=config["AF_ONLY_GNOMAD"],
+		TMPDIR=config["TMPDIR"]
 
-	threads: 2
+	threads: 8
 
 	conda: "ENVS/gatk4.yaml",
 
@@ -665,6 +800,7 @@ rule GetPileupsummaries_TumourOnly:
 			-I {input.TUMOUR} \
 			-V {params.AF_ONLY_GNOMAD} \
 			-L {params.AF_ONLY_GNOMAD} \
+			--tmp-dir {params.TMPDIR} \
 			-O {output.PS_T} 2>> {log}
 
 	"""
@@ -676,7 +812,7 @@ rule CalculateContamination_TumourOnly:
 		CT=temp("MT2_TumourOnly_Filt/{pon}.vs.{tumour}.calculateContamination_TumourOnly.table"),
 		ST=temp("MT2_TumourOnly_Filt/{pon}.vs.{tumour}.segment_TumourOnly.table"),
 
-	threads: 2
+	threads: 8
 
 	conda: "ENVS/gatk4.yaml",
 
@@ -706,24 +842,23 @@ rule Filter_MutectCalls_TumourOly:
 		F_STATS=protected("MT2_TumourOnly_Filt/{pon}.vs.{tumour}.filtering.stats"),
 		Unfiltered_VCF=protected("MT2_TumourOnly_Filt/{pon}.vs.{tumour}.unfiltered.vcf"),
 		Unfiltered_IDX=protected("MT2_TumourOnly_Filt/{pon}.vs.{tumour}.unfiltered.vcf.idx"),
-		Somatic_VCF=protected("MT2_TumourOnly_Filt/{pon}.vs.{tumour}.somatic.vcf"),
-		Somatic_IDX=protected("MT2_TumourOnly_Filt/{pon}.vs.{tumour}.somatic.vcf.idx"),
 
 	params:
 		REF=config["REF"],
+		TMPDIR=config["TMPDIR"],
 		INTERVALS=config["INTERVALS"] if config["SEQUENCING"]["WES"] else " ",
-		PADDING=config["PADDING"] if config["SEQUENCING"]["WES"] else " ",
+		PADDING=config["PADDING"] if config["SEQUENCING"]["WES"] else 0,
 		AF_ONLY_GNOMAD=config["AF_ONLY_GNOMAD"],
 
-	threads: 2
+	threads: 8
 
 	conda: "ENVS/gatk4.yaml",
 
-	log:"LOGS/MT2_TumourOnly_Filt/{pon}.vs.{tumour}.log"
+	log:"LOGS/MT2_TumourOnly_Filt/{pon}.vs.{tumour}.filterMutectCalls.log"
 
-	benchmark:"LOGS/MT2_TumourOnly_Filt/{pon}.vs.{tumour}.tsv"
+	benchmark:"LOGS/MT2_TumourOnly_Filt/{pon}.vs.{tumour}.filterMutectCalls.tsv"
 
-	message: "Running GATK Filter_MutectCalls_TumourOly for {input.VCF} using {threads} threads and saving as {output.Somatic_VCF}"
+	message: "Running GATK Filter_MutectCalls_TumourOly for {input.VCF} using {threads} threads and saving as {output.Unfiltered_VCF}"
 
 	shell:"""
 			gatk --java-options "-Xmx12G" FilterMutectCalls \
@@ -733,14 +868,42 @@ rule Filter_MutectCalls_TumourOly:
 			--contamination-table {input.CT} \
 			--ob-priors {input.LROM} \
 			-stats {input.STATS} \
+			--tmp-dir {params.TMPDIR} \
 			--filtering-stats {output.F_STATS} \
 			-O {output.Unfiltered_VCF} 2> {log}
+	"""
+rule Select_MutectCalls_TumourOly:
+	input:
+		Unfiltered_VCF=("MT2_TumourOnly_Filt/{pon}.vs.{tumour}.unfiltered.vcf"),
+		Unfiltered_IDX=("MT2_TumourOnly_Filt/{pon}.vs.{tumour}.unfiltered.vcf.idx"),
 
-			gatk --java-options "-Xmx12G" SelectVariants \
+	output:Somatic_VCF=protected("MT2_TumourOnly_Filt/{pon}.vs.{tumour}.somatic.vcf"),
+		Somatic_IDX=protected("MT2_TumourOnly_Filt/{pon}.vs.{tumour}.somatic.vcf.idx"),
+
+	params:
+		REF=config["REF"],
+		TMPDIR=config["TMPDIR"],
+		INTERVALS=config["INTERVALS"] if config["SEQUENCING"]["WES"] else " ",
+		PADDING=config["PADDING"] if config["SEQUENCING"]["WES"] else 0,
+		AF_ONLY_GNOMAD=config["AF_ONLY_GNOMAD"],
+
+	threads: 8
+
+	conda: "ENVS/gatk4.yaml",
+
+	log:"LOGS/MT2_TumourOnly_Filt/{pon}.vs.{tumour}.selectMutectCalls.log"
+
+	benchmark:"LOGS/MT2_TumourOnly_Filt/{pon}.vs.{tumour}.selectMutectCalls.tsv"
+
+	message: "Running GATK Filter_MutectCalls_TumourOly for {input.Unfiltered_VCF} using {threads} threads and saving as {output.Somatic_VCF}"
+
+	shell:"""
+			gatk --java-options "-Xmx4G" SelectVariants \
 			{params.INTERVALS} \
 			--interval-padding {params.PADDING} \
-			-V {output.Unfiltered_VCF} \
+			-V {input.Unfiltered_VCF} \
 			-R {params.REF} \
+			--tmp-dir {params.TMPDIR} \
 			--exclude-filtered \
 			--output {output.Somatic_VCF} 2>> {log}
 	"""
@@ -757,7 +920,7 @@ rule VEP_TumourOnly:
 		REF=config["REF"],
 		VEP_DATA=config["VEP_DATA"],
 
-	threads: 2
+	threads: 8
 
 	conda: "ENVS/vep.yaml"
 
